@@ -1,0 +1,23 @@
+# /root/v2/flow2
+* mode = "v2"
+
+* PushIntelligence
+``` default
+post http://10.1.1.1/new_intelligence
+${intelligence}
+```
+
+***
+need_infer <- @b
+  <> {
+    ? is_need_infer = true
+    => {
+      <> {
+        ? is_need_infer2 = false
+        => {
+          PushIntelligence(link=@a)
+      }
+    }
+  }
+}
+***

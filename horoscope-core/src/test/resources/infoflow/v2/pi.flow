@@ -1,0 +1,8 @@
+# /v2/pi
+
+***
+    // @n
+    <left> => /v2/acrcot ?x=5 &n=@n
+    <right> => /v2/acrcot ?x=239 &n=@n
+    pi <- 4 * (4 * left->result - right->result)
+***

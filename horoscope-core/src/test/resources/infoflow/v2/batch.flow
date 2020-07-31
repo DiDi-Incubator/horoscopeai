@@ -1,0 +1,13 @@
+# /v2/batch
+
+* Concat
+``` concat
+```
+
+***
+    input <- {
+        "x": {"head": "a", "middle": "-", "last": 1}, 
+        "y": {"head": "b", "middle": "-", "last": 2}
+    }
+    result <- [Concat(_) <- input]
+***

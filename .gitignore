@@ -1,0 +1,12 @@
+.idea
+*.iml
+*/*.iml
+target
+*/target
+*/output
+*-dist
+**/.ipynb_checkpoints
+*.pyc
+.DS_Store
+h2_store.*.db
+logs/*

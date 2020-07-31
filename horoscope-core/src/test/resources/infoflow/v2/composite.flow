@@ -1,0 +1,20 @@
+# /v2/composite
+
+* Read
+``` restful
+read
+```
+
+* Write
+``` restful
+write
+```
+
+***
+    a <- Read(key="a")
+    b <~ Read(key="b")
+    c <~ Read(key="c")
+    Write(output=(a + b))
+    //xs <- [1, 2, 3, 4]
+    //w2 <- Write([s]=[1, 2, 3, 4])
+***

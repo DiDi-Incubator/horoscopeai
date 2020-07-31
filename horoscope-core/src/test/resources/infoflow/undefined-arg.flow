@@ -1,0 +1,12 @@
+# /test/undefined-arg
+* mode = "compatible"
+
+***
+    arg <- @undefined_arg
+    <> {
+        ? is_null = arg == null
+        => {
+
+        }
+    }
+***

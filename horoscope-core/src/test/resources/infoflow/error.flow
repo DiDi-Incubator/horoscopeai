@@ -1,0 +1,11 @@
+# /test/error
+* mode = "compatible"
+
+* Action
+``` action
+```
+
+***
+    action <- Action()
+    error <- @error.action
+***

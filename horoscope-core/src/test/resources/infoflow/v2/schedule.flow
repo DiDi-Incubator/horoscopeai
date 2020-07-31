@@ -1,0 +1,6 @@
+# /v2/schedule
+
+***
+    <schedule> + "10 minutes" => /v2/schedule?x=1&y=2
+    <trace> + => /v2/schedule#"b"
+***

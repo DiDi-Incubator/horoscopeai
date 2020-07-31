@@ -1,0 +1,5 @@
+# /v2/hello
+
+***
+    result <- "hello world!"
+***

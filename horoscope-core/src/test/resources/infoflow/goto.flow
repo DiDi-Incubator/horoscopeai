@@ -1,0 +1,12 @@
+# /root/flow-goto-demo
+* mode = "compatible"
+
+***
+token <- @arg
+<> {
+  ? need_infer = true
+  => {
+     <demo> + "1 minutes" => /root/flow-goto-demo
+  }
+}
+***

@@ -1,0 +1,32 @@
+# /test/branch
+* mode = "compatible"
+
+***
+    l <- @level2
+    normal <- true
+    city <- [0, 1, 2, 3, 4]
+    <> {
+        ? vip = @level == 1
+        => {
+            threshold <- 0.5
+        }
+        
+        ? normal
+        => {
+            <> {
+                ? high = @level == 2 and @level in city
+                | middle = @level == 3
+                => {
+                    threshold <- 0.75
+                }
+                
+                ? low = @level == 4
+                => {
+                    threshold <- 0.9
+                }
+            }
+        }
+    }
+    
+    result <- threshold
+***

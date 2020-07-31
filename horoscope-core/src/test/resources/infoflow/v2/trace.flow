@@ -1,0 +1,22 @@
+# /v2/trace
+
+* Wait
+``` wait
+```
+
+***
+    <> {
+        ? init = $count == null
+        => {
+            $count <- 0
+        }
+        
+        ? add = @flag
+        => {
+            $count <- $count + $delta
+        }
+    }
+    
+    Wait()
+    result <- $count
+***

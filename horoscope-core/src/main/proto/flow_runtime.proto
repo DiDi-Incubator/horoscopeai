@@ -1,0 +1,139 @@
+/*
+ * Copyright (C) 2019 DiDi Inc. All Rights Reserved.
+ * Authors: wenxiang@didiglobal.com
+ * Description: input/output/context of Flow
+ */
+syntax = "proto2";
+
+package com.didichuxing.horoscope.core;
+option java_multiple_files = false;
+option java_outer_classname = "FlowRuntimeMessage";
+
+message FlowValue {
+    message List {
+        repeated FlowValue child = 1;
+    }
+
+    message Dict {
+        map<string, FlowValue> child = 1;
+    }
+
+    oneof value {
+        bytes binary = 1;
+        double fractional = 2;
+        int64 integral = 3;
+        string text = 4;
+        bool boolean = 5;
+        List list = 6;
+        Dict dict = 7;
+    }
+}
+
+message FlowEvent {
+    message Parent {
+        required string event_id = 1;
+        required string trace_id = 2;
+        required string flow_name = 3;
+        repeated string scope = 4;
+    }
+
+    required string event_id = 1;
+    required string trace_id = 2;
+    required string flow_name = 3;
+    optional int64 scheduled_timestamp = 4; // unix timestamp
+    map<string, TraceVariable> argument = 6; // TODO(wenxiang): no need to use TraceVariable any more
+    optional Parent parent = 8;
+
+    optional TokenStatus token = 5; // deprecated
+    optional string choice = 7; // deprecated
+
+    // deprecated
+    message TokenStatus {
+        required string name = 1;
+        required string value = 2;
+        optional string owner = 3;  // trace_id
+        optional ValueReference reference = 4;
+    }
+}
+
+// TODO(wenxiang): move inside TraceVariable
+message ValueReference {
+    // for flow argument: @xxx
+    // for local variable: xxx
+    // for trace variable: $xxx
+    // for temp variable: -argument_name->variable_name
+    required string name = 2;
+
+    required string event_id = 1;
+    repeated string scope = 3;
+    optional string flow_name = 4;
+}
+
+message FlowInstance {
+    message Assign {
+        required string name = 1;
+        required FlowValue value = 2;
+
+        optional string choice = 3;
+        repeated ValueReference dependency = 4;
+        optional FlowValue error = 5;
+
+        optional string compositor = 101;
+        map<string, ValueReference> composite_argument = 102;
+    }
+
+    message Choose {
+        required string choice = 1;
+        optional string parent = 2;
+        repeated ValueReference predicate = 3;
+    }
+
+    message Procedure {
+        message Composite {
+            required string compositor = 1;
+            required FlowValue result = 2;
+            optional FlowValue argument = 3;
+            optional int64 start_time = 4;
+            optional int64 end_time = 5;
+            optional int32 batch_size = 6 [default = 1];
+        }
+
+        message Fault {
+            required string catalog = 1;
+            required string message = 2;
+            optional string detail = 3;
+        }
+
+        required string flow_name = 1;
+        optional string flow_id = 2;
+        repeated string scope = 3;
+        repeated string choice = 4;
+        map<string, Fault> fault = 5;
+        map<string, FlowValue> argument = 6;
+        map<string, Composite> composite = 7;
+        map<string, FlowValue> assign = 8;
+        repeated TraceVariable load = 9;
+    }
+
+    optional string flow_id = 1;
+    required FlowEvent event = 2; // TODO(wenxiang): should extract necessary fields out
+    optional int64 start_time = 6;
+    optional int64 end_time = 7;
+
+    repeated Assign assign = 3; // deprecated
+    repeated Choose choose = 4; // deprecated
+    optional FlowEvent goto = 5; // deprecated
+
+    repeated Procedure procedure = 101;
+    repeated TraceVariable update = 102;
+    repeated FlowEvent schedule = 103;
+}
+
+message TraceVariable {
+    required FlowValue value = 1;
+    optional ValueReference reference = 2;
+}
+
+message TraceContext {
+    repeated TraceVariable contexts = 1;
+}

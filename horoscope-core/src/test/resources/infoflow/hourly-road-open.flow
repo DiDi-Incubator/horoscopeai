@@ -1,0 +1,204 @@
+# /traffic/intelligence/road-open-hourly
+
+* PublishIntelligence
+``` restful
+post @{intelligence-publisher-service}/api/v2/intelligenceManager/manualIntelligence
+${intelligence}
+```
+
+* QuickfixStatus
+``` restful
+get @{intelligence-state-service}/api/v1/publishStateService/publishState?entityId=${entity_id}
+```
+
+* MapVersion
+``` restful
+get @{intelligence-state-service}/api/v1/quickfixStore/quickfixVersion
+```
+
+* AuditState
+``` restful
+post @{intelligence-state-service}/api/v1/auditStateService/auditState
+${audit_request}
+```
+
+* HourlyOpenReviewSample
+``` restful
+get @{example-service}/api/exampleStore/getExample?entityId=${entity_id}&exampleName=hourly_open_encoder_pyfunc&maxVersion=${max_version}
+```
+
+* LinkProperty
+``` restful
+get @{feature-service}/api/feature/linkProperty?link_id=${link_id}&map_version=${map_version}
+```
+
+* LinkImportance
+``` restful
+get @{feature-service}/api/feature/entity?entity_id=${link_id}&fn=importance_property&map_version=${map_version}&catalog=1
+```
+
+* ConfusableStructFeature
+``` restful
+get @{feature-service}/api/feature/linkv2?link_id=${link_id}&fn=confusable_struct_link_min_width
+```
+
+* FeatureBatch
+``` restful
+get @{feature-service}/api/feature/compute_batch?fn=didi_original_pass_uv_10minutes&fn=didi_original_u_turn_uv_10minutes&fn=road_construction_state_10min
+```
+
+* AggUVFeature
+``` restful
+post @{query-calc-service}/api/queryCalc/feature/linkAgg
+${agg_feature_request}
+```
+
+* MMDistributionFeature
+``` restful
+get @{query-calc-service}/api/queryCalc/feature/getPointDistributionDiscrete?linkId=${link_id}&mapVersion=${map_version}&startTime=${st}&endTime=${et}
+```
+
+* FeatureEncoder
+``` mlflow
+post @{mlflow-service} hourly_open_encoder_pyfunc
+${encoder_request}
+```
+
+* NonConfusingHourlyOpenModel
+``` mlflow
+post @{mlflow-service} hourly_open_model_v2_non_confusing_pyfunc
+${model_request}
+```
+
+* ConfusingHourlyOpenModel
+``` mlflow
+post @{mlflow-service} hourly_open_model_v2_confusing_pyfunc
+${model_request}
+```
+
+* RoadOpenApolloConfig
+``` apollo_config
+apollo.config.ns="horoscope_config"
+apollo.config.name="hourly_open_flow_parameter"
+```
+
+* RoadOpenApolloToggle
+``` apollo_toggle
+apollo.toggle.name="hourly_open_flow_toggle"
+```
+
+***
+    // 1. step one, fetch basic properties
+    entity <- @road_const.entityId
+    link <- @road_const.linkId
+    siwei_id <- round(link.to_long() / 10)
+    event_time <- @road_const.infoEventTime
+    map_version <- MapVersion()
+    cr_types <- hit_now_crs(@road_const.vperiods)
+    importance_result <~ LinkImportance(link_id=link, map_version=map_version)
+    importance <- importance_result[link].importance_property[1]
+    link_property <~ LinkProperty(link_id=link, map_version=map_version)
+    confusable_struct <~ ConfusableStructFeature(link_id=link)
+    confusable_min_width <- parse_json(confusable_struct[link].confusable_struct_link_min_width[0]).featureBuffer[0].value
+    is_confusable_link <- confusable_min_width > 0 and confusable_min_width < 30
+    all_feature_batches <- FeatureBatch()
+    feature_time <- (all_feature_batches.*).min() // in seconds
+    pass_uv_10min_st <- (feature_time - 11 * 86400) + 3600 // et: feature_time
+    construction_state_10min_st <- feature_time - 24 * 3600 // et: feature_time
+    u_turn_uv_10min_st <- day_floor(feature_time) // et: feature_time
+    pass_uv_daily_et <- day_floor(feature_time) - 1 // [st, et]
+    pass_uv_daily_st <- pass_uv_daily_et - 60 * 86400
+    mm_distribution_st <- day_floor(feature_time) // et: feature_time
+    agg_uv <~ AggUVFeature(agg_feature_request={"links": link, "features":
+        [{"name": "didi_original_pass_uv_10minutes", "st": pass_uv_10min_st, "et": feature_time, "interval": 3600},
+         {"name": "road_construction_state_10min", "st": construction_state_10min_st, "et": feature_time, "interval": 600},
+         {"name": "didi_original_u_turn_uv_10minutes", "st": u_turn_uv_10min_st, "et": feature_time, "interval": 3600},
+         {"name": "didi_original_pass_uv_daily", "st": pass_uv_daily_st, "et": pass_uv_daily_et, "interval": 86400}]})
+    mm_distribution <~ MMDistributionFeature(link_id=link, map_version=map_version, st=mm_distribution_st, et=feature_time)
+    sample_info <~ HourlyOpenReviewSample(entity_id=entity, max_version=30)
+    simplified_sample_info <- simplify_road_open_sample(sample_info.data)
+    apollo_params <~ RoadOpenApolloConfig()
+    apollo_toggle <~ RoadOpenApolloToggle(apollo_uid=link, siwei_id=siwei_id, city=link_property[0].city_id)
+
+    // 2. step two, higher order feature encoder
+    encoded_feature <~ FeatureEncoder(encoder_request={"entityId": entity, "eventTime": event_time,
+        "featureTime": feature_time * 1000, "mapVersion": map_version,
+        "road_construction_state_10min": agg_uv[link]["road_construction_state_10min"],
+        "didi_original_pass_uv_10minutes": agg_uv[link]["didi_original_pass_uv_10minutes"],
+        "didi_original_u_turn_uv_10minutes": agg_uv[link]["didi_original_u_turn_uv_10minutes"],
+        "didi_original_pass_uv_daily": agg_uv[link]["didi_original_pass_uv_daily"],
+        "didi_map_match_point_distribution_discrete_sum": mm_distribution[link]["didi_map_match_point_distribution_discrete_sum"],
+        "property_feature": {"value": {"length": link_property[0]["length"], "kind": link_property[0]["kind"], "level": link_property[0]["level"]}},
+        "is_confusable_link": {"value": is_confusable_link},
+        "review_feature": {"value": simplified_sample_info}})
+
+    // 3. step three model predict
+    non_confusing_result <~ NonConfusingHourlyOpenModel(model_request=encoded_feature)
+    confusing_result <~ ConfusingHourlyOpenModel(model_request=encoded_feature)
+    publish_config <- {"source": 4, "subSource": 418, "infoType": 12, "isClustered": false}
+    quickfix_status <~ QuickfixStatus(entity_id=entity)
+    audit_status <~ AuditState(audit_request={"entityId": entity, "condition": {"coolDown": "1d", "from": ["4_418"]}})
+    <> {
+        ? is_invalid_cr = cr_types.noneof(["DAILY", "WEEKLY"])
+        | is_kind_filtered = link_property[0].kind.anyof(["08", "09"])
+        | is_level_filtered = link_property[0].level in ["0b"]
+        | is_vehicle_type_filtered = link_property[0].vehicle_type in ["00010001100000000000000000000000", "00010001110000000000000000000000"]
+        | is_toggle_closed = not apollo_toggle.apollo_toggle_allow
+        => {}
+        ? is_access = @error.length() == 0
+        => {
+            <> {
+                ? is_confusable_link
+                => {
+                    <> {
+                        ? high_importance = importance < apollo_params.confusing_link_importance_threshold
+                        => {
+                            <> {
+                                ? confusing_low_confidence = confusing_result.confidence < apollo_params.confusing_link_confidence_threshold
+                                | is_already_opened = quickfix_status.data.currentConstCatalog in ["OPEN"]
+                                | is_audit_duplicated = audit_status.data.length() > 0
+                                => {}
+
+                                ? confusing_publish = @error.length() == 0
+                                => {
+                                    PublishIntelligence(intelligence={"publishConfig": publish_config,
+                                        "intelligence":{"entities": [entity], "infoEventTime": event_time, "traceId": @road_const.traceId, "originalId": @road_const.traceId,
+                                             "confidence": confusing_result.confidence, "description": confusing_result.description}})
+                                }
+                            }
+                        }
+                    }
+                }
+                ? not_confusable_link = true
+                => {
+                    <> {
+                        ? accumulate_uv_filtered = encoded_feature.feature_dict.current_accumulate_uv < apollo_params.current_accumulate_uv_threshold
+                        | abnormal_count_filtered = encoded_feature.feature_dict.abnormal_count_15 > apollo_params.abnormal_count_15_threshold
+                        => {}
+
+                        ? non_confusing_infer = @error.length() == 0
+                        => {
+                            <> {
+                                ? non_confusing_high_level_low_confidence = (importance < apollo_params.unconfusing_link_importance_threshold and
+                                    non_confusing_result.confidence < apollo_params.unconfusing_link_high_level_confidence_threshold)
+                                | non_confusing_low_level_low_confidence = (importance > apollo_params.unconfusing_link_importance_threshold and (
+                                    encoded_feature.feature_dict.current_accumulate_uv < apollo_params.unconfusing_link_low_level_uv_threshold or
+                                    non_confusing_result.confidence < apollo_params.unconfusing_link_low_level_confidence_threshold))
+                                | is_already_opened = quickfix_status.data.currentConstCatalog in ["OPEN"]
+                                | is_audit_duplicated = audit_status.data.length() > 0
+                                => {}
+
+                                ? non_confusing_publish = @error.length() == 0
+                                => {
+                                    PublishIntelligence(intelligence={"publishConfig": publish_config,
+                                        "intelligence":{"entities": [entity], "infoEventTime": event_time, "traceId": @road_const.traceId, "originalId": @road_const.traceId,
+                                            "confidence": non_confusing_result.confidence, "description": non_confusing_result.description}})
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+***

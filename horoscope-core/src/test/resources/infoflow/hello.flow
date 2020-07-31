@@ -1,0 +1,6 @@
+# /test/simple
+* mode = "compatible"
+
+***
+result <- "hello world!"
+***

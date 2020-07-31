@@ -1,0 +1,29 @@
+# /v2/branch
+
+***
+    normal <- true
+    <> {
+        ? vip = @level == 1
+        => {
+            threshold <- 0.5
+        }
+        
+        ? normal
+        => {
+            <> {
+                ? high = @level == 2
+                | middle = @level == 3
+                => {
+                    threshold <- 0.75
+                }
+                
+                ? low = @level == 4
+                => {
+                    threshold <- 0.9
+                }
+            }
+        }
+    }
+    
+    result <- threshold
+***

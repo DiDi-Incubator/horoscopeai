@@ -1,0 +1,26 @@
+# /v2/failover
+
+* Input
+``` input
+```
+
+* Action
+``` action
+```
+
+***
+    input <- Input()
+    action <- Action(input)
+    <> {
+        ? success = action
+        | fail = action == null
+        => {
+            result <- 1
+        }
+        
+        ? failover = action == null !! true
+        => {
+            result <- 0
+        }
+    }
+***

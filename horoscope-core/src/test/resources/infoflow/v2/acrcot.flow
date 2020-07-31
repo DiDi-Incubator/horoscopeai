@@ -1,0 +1,31 @@
+# /v2/acrcot
+
+***
+    // @x @n
+    i <~ @i !! 0
+    d <~ @d !! @x
+    sign <~ @sign !! 1 - i % 2 * 2 
+    delta <~ sign / (2 * i + 1) / d
+    <> {
+        ? continue = i < @n
+        => {
+            <> {
+                ? add = sign > 0
+                => {
+                    <rest> => /v2/acrcot?x=@x &n=@n &i=(i + 1) &d=(d * @x * @x) &sign=-1
+                }
+        
+                ? sub = sign < 0
+                => {
+                    <rest> => /v2/acrcot?x=@x &n=@n &i=(i + 1) &d=(d * @x * @x) &sign=1
+                }
+            }
+            result <~ delta + rest->result
+        }
+        
+        ? end = true
+        => {
+            result <~ delta
+        }
+    }
+***

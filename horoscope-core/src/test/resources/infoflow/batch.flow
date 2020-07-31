@@ -1,0 +1,11 @@
+# /test/batch
+* mode = "compatible"
+
+* Concat
+``` concat
+```
+
+***
+    input <- [{"head": "a", "middle": "-", "last": 1}, {"head": "b", "middle": "-", "last": 2}]
+    result <- [Concat(_) <- input]
+***

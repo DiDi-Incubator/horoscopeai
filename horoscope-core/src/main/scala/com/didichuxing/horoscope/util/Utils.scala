@@ -1,0 +1,225 @@
+/*
+ * Copyright (C) 2020 DiDi Inc. All Rights Reserved.
+ * Authors: huchengyi@didiglobal.com
+ * Description:
+ */
+
+package com.didichuxing.horoscope.util
+
+import java.io.{Closeable, IOException}
+import java.net.{Inet4Address, NetworkInterface}
+import java.util.UUID
+import java.util.zip.CRC32
+
+import akka.actor.ActorSelection
+import akka.util.Timeout
+import akka.pattern.ask
+import com.didichuxing.horoscope.core.FlowRuntimeMessage
+import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowInstance.Assign
+import com.didichuxing.horoscope.core.FlowRuntimeMessage.{FlowInstanceOrBuilder, FlowValue}
+import com.didichuxing.horoscope.runtime.{NULL, Value}
+import com.typesafe.config.Config
+import org.apache.hadoop.hbase.util.Bytes
+
+import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.concurrent.duration.FiniteDuration
+import scala.util.{Failure, Success, Try}
+import scala.collection.JavaConversions._
+
+object Utils extends Logging {
+
+  System.setProperty("java.util.secureRandomSeed", "true")
+
+  /**
+   * 重试请求，重试过程中不回调
+   *
+   * @param actor
+   * @param message
+   * @param attempts
+   * @param interval
+   * @param executor
+   * @return
+   */
+  def retryAsk(actor: ActorSelection, message: Any, attempts: Int, interval: FiniteDuration)
+              (implicit executor: ExecutionContext): Future[Any] = {
+    val promise = Promise[Any]
+    //请求必须1秒内返回，否则会触发重试
+    actor.ask(message)(Timeout(interval)).onComplete {
+      case Success(value) =>
+        promise.success(value)
+      case Failure(exception) =>
+        if (attempts > 0) {
+          //Thread.sleep(interval.toMillis)
+          retryAsk(actor, message, attempts - 1, interval).onComplete {
+            case Success(value) =>
+              promise.success(value)
+            case Failure(exception) =>
+              promise.failure(exception)
+          }
+        } else {
+          promise.failure(exception)
+        }
+    }
+    promise.future
+  }
+
+  /**
+   * 获取本机ip
+   *
+   * @return
+   */
+  def guessLocalIp(): String = {
+    var guessIP = "127.0.0.1"
+    val allNetInterfaces = NetworkInterface.getNetworkInterfaces()
+    for (netInterface <- allNetInterfaces) {
+      if (netInterface.isUp && !netInterface.isLoopback && !netInterface.isVirtual) {
+        val addresses = netInterface.getInetAddresses
+        for (address <- addresses) {
+          if (address != null && address.isInstanceOf[Inet4Address]) {
+            guessIP = address.getHostAddress
+          }
+        }
+      }
+    }
+    guessIP
+  }
+
+  /**
+   * 根据traceId计算出slot
+   *
+   * @param traceId
+   * @return
+   */
+  def getSlot(traceId: String, slotCount: Int): Int = {
+    val crc32 = new CRC32()
+    crc32.reset()
+    crc32.update(Bytes.toBytes(traceId))
+    val hash = crc32.getValue
+    val slot = hash % slotCount
+    slot.toInt
+  }
+
+  def getClusterSlotCount(config: Config): Int = {
+    Try(config.getInt("horoscope.rm.slot-count")).getOrElse(Constants.CLUSTER_SLOT_COUNT)
+  }
+
+  def getSlotBatchSize(config: Config): Int = {
+    Try(config.getInt("horoscope.rm.slot-batch")).getOrElse(Constants.SCH_BATCH_SIZE)
+  }
+
+  /**
+   * 生成唯一eventId
+   *
+   * @return
+   */
+  def getEventId(): String = {
+    //    val random = ThreadLocalRandom.current
+    //    new UUID(random.nextInt, random.nextInt).toString.replace("-", "")
+    UUID.randomUUID().toString.replace("-", "")
+  }
+
+  /**
+   * 生成唯一traceId
+   *
+   * @param eventId
+   * @return
+   */
+  def getTraceId(eventId: String): String = {
+    UUID.nameUUIDFromBytes(eventId.getBytes).toString.replace("-", "")
+  }
+
+  /**
+   * config int value or default
+   *
+   * @param config
+   * @param path
+   * @param default
+   * @return
+   */
+  def configIntOrDefault(config: Config, path: String, default: Int): Int = {
+    try {
+      config.getInt(path)
+    } catch {
+      case ex: Exception =>
+        debug(("msg", ex.getMessage))
+        default
+    }
+  }
+
+  def close(closeable: Closeable): Unit = {
+    if (closeable != null) {
+      try {
+        closeable.close();
+      } catch {
+        case ex: Exception =>
+          ex.printStackTrace()
+      }
+    }
+  }
+
+  def lastSplit(unSplit: String, tag: String): Array[String] = {
+    val idx = unSplit.lastIndexOf(tag)
+    if (idx == -1) {
+      Array[String](unSplit)
+    } else {
+      val x = unSplit.substring(0, idx)
+      val y = unSplit.substring(idx + 1, unSplit.length)
+      Array[String](x, y)
+    }
+  }
+
+  /**
+   * eliminate tmp assign and args value
+   */
+  def simplifyLog(flowInstance: FlowRuntimeMessage.FlowInstanceOrBuilder): FlowRuntimeMessage.FlowInstanceOrBuilder = {
+    val b = FlowRuntimeMessage.FlowInstance.newBuilder()
+    b.setFlowId(flowInstance.getFlowId)
+    b.setEvent(flowInstance.getEvent)
+    b.addAllChoose(flowInstance.getChooseList)
+    if (flowInstance.hasGoto) {
+      b.setGoto(flowInstance.getGoto)
+    }
+    b.setStartTime(flowInstance.getStartTime)
+    b.setEndTime(flowInstance.getEndTime)
+    if (flowInstance.getProcedureCount > 0) {
+      b.addAllProcedure(flowInstance.getProcedureList)
+    }
+    if (flowInstance.getScheduleCount > 0) {
+      b.addAllSchedule(flowInstance.getScheduleList)
+    }
+    flowInstance.getAssignList.foreach { a =>
+      if (a.getName.startsWith("-") || a.getName().startsWith("~")) {
+        // ignore value
+        val ta = b.addAssignBuilder()
+          .setValue(FlowValue.newBuilder())
+          .setName(a.getName)
+        if (a.hasChoice) ta.setChoice(a.getChoice)
+        if (a.hasCompositor) ta.setCompositor(a.getCompositor)
+        if (a.getDependencyList.size() > 0) ta.addAllDependency(a.getDependencyList)
+        if (a.hasError) ta.setError(a.getError)
+        if (a.getCompositeArgumentCount > 0) ta.putAllCompositeArgument(a.getCompositeArgumentMap)
+        b.addAssign(ta)
+      } else {
+        b.addAssign(a)
+      }
+    }
+    b
+  }
+
+  def ignoreLog(flowInstance: FlowInstanceOrBuilder): Boolean = {
+    val logIgnoreOption = flowInstance.getAssignList.find(_.getName == "flow_log_ignore")
+    if (logIgnoreOption.isDefined) {
+      Try(Value(logIgnoreOption.get.getValue).as[Boolean]).getOrElse(false)
+    } else {
+      false
+    }
+  }
+
+  /**
+   * trace store 中存储gotoEvent的column
+   */
+  def schStoreCol(config: Config): String = {
+    Try(config.getString("horoscope.scheduler.store-col")).getOrElse("_SCD_")
+  }
+
+}
