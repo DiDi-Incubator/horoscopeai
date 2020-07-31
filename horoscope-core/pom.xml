@@ -20,16 +20,20 @@
     </properties>
 
     <dependencies>
-        <!--test dependencies-->
+        <!--basic dependencies-->
         <dependency>
-            <groupId>org.scalactic</groupId>
-            <artifactId>scalactic_${scala.binary.version}</artifactId>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala-compiler</artifactId>
         </dependency>
-        <!--logging dependencies-->
+        <dependency>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala-library</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
         </dependency>
+
         <!--utilities-->
         <dependency>
             <groupId>org.scala-lang.modules</groupId>
@@ -46,7 +50,6 @@
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-pool2</artifactId>
-            <version>2.8.0</version>
         </dependency>
         <dependency>
             <groupId>com.google.guava</groupId>
@@ -68,6 +71,7 @@
             <groupId>com.googlecode.protobuf-java-format</groupId>
             <artifactId>protobuf-java-format</artifactId>
         </dependency>
+
         <!--akka dependencies-->
         <dependency>
             <groupId>com.typesafe.akka</groupId>
@@ -95,6 +99,7 @@
             <version>${akka.version}</version>
             <scope>test</scope>
         </dependency>
+
         <!--zookeeper dependency-->
         <dependency>
             <groupId>org.apache.zookeeper</groupId>
@@ -120,12 +125,14 @@
             <artifactId>curator-test</artifactId>
             <scope>test</scope>
         </dependency>
+
         <!--script dependency-->
         <dependency>
             <groupId>org.antlr</groupId>
             <artifactId>antlr4-runtime</artifactId>
             <version>4.7.2</version>
         </dependency>
+
         <!--kafka client-->
         <dependency>
             <groupId>org.apache.kafka</groupId>
@@ -137,6 +144,7 @@
             <artifactId>transmittable-thread-local</artifactId>
             <version>2.11.2</version>
         </dependency>
+
         <!--grpc dependencies-->
         <dependency>
             <groupId>io.grpc</groupId>
@@ -159,32 +167,30 @@
             <version>${grpc.version}</version>
             <scope>test</scope>
         </dependency>
-        <dependency>
-            <groupId>com.twitter</groupId>
-            <artifactId>chill-akka_2.11</artifactId>
-            <version>0.9.3</version>
-        </dependency>
+
         <!--hbase client-->
         <dependency>
             <groupId>com.didichuxing.horoscope</groupId>
             <artifactId>hbase-client</artifactId>
             <version>${project.version}</version>
         </dependency>
+
         <!--rocksdb-->
         <dependency>
             <groupId>org.rocksdb</groupId>
             <artifactId>rocksdbjni</artifactId>
         </dependency>
+
         <!--thrift-->
         <dependency>
             <groupId>org.apache.thrift</groupId>
             <artifactId>libthrift</artifactId>
         </dependency>
+
         <!--redis client-->
         <dependency>
             <groupId>redis.clients</groupId>
             <artifactId>jedis</artifactId>
-            <version>2.7.3</version>
         </dependency>
     </dependencies>
 
