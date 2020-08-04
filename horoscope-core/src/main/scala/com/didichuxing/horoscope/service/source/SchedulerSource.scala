@@ -65,6 +65,10 @@ class SchedulerEventBus(sourceName: String, params: Config)
   override def doProcess(events: List[FlowEvent]): List[FlowEvent] = {
     eventProcessor.putEvent(events)
   }
+
+  override def process(flowName: String, events: List[Value]): List[FlowEvent] = {
+    process(events)
+  }
 }
 
 class SchedulerEventProcessor(sourceName: String, params: Config)(implicit ctx: ApplicationContext)

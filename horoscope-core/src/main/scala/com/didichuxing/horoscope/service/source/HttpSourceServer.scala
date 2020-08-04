@@ -9,7 +9,7 @@ package com.didichuxing.horoscope.service.source
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.Http.ServerBinding
 import akka.http.scaladsl.model._
-import akka.http.scaladsl.server.Directives._
+import akka.http.scaladsl.server.Directives.{get, _}
 import akka.http.scaladsl.server.Route
 import akka.stream.ActorMaterializer
 import com.didichuxing.horoscope.core.Source
@@ -48,53 +48,81 @@ class HttpSourceServer(implicit ctx: ApplicationContext) extends Logging {
       sourceCtrl = new SourceControl(client)(ctx.config, actorSystem)
     }
     this.sources = sources
-    val route: Route =
-      concat(
-        post {
-          path("horoscope" / Remaining) { sourceName =>
-            entity(as[String]) { json =>
-              SystemLog.create()
-              debug(("msg", "http source sync"), ("sourceName", sourceName), ("body", json))
-              onComplete(doPost(sourceName, json)) {
-                result =>
-                  complete(jsonResponse(result.getOrElse(PostResult(UnknownError))))
-              }
-            }
-          }
-        },
-        post {
-          path("horoscopeAsync" / Remaining) { sourceName =>
-            entity(as[String]) { json =>
-              SystemLog.create()
-              debug(("msg", "http source async"), ("sourceName", sourceName), ("body", json))
-              onComplete(doPostAsync(sourceName, json)) {
-                result =>
-                  complete(jsonResponse(result.getOrElse(PostResult(UnknownError))))
-              }
-            }
-          }
-        },
-        post {
-          path("sourceCtrl") {
-            entity(as[String]) { json =>
-              SystemLog.create()
-              debug(("msg", "source control"), ("command", json))
-              onComplete(doSourceCtrl(json)) {
-                result =>
-                  complete {
-                    val httpEntity = HttpEntity(ContentTypes.`application/json`, gson.toJson(result))
-                    HttpResponse().withEntity(httpEntity)
-                  }
-              }
+    val route: Route = schedule() ~ ctrl()
+    val hostConf = Try(ctx.config.getString("akka.remote.netty.tcp.hostname")).getOrElse("localhost")
+    val host = if (hostConf == "") "localhost" else hostConf
+    val port = Try(ctx.config.getInt("horoscope.source.http.port")).getOrElse(8081)
+    bindingFuture = Http().bindAndHandle(route, host, port)
+    info(("msg", "start http source server"), ("host", host), ("port", port))
+  }
+
+  private def schedule(): Route = {
+    concat(
+      post {
+        path("schedule" / Segment / Segment / Segment / Remaining) { (source, trace, time, flowName) =>
+          entity(as[String]) { json =>
+            SystemLog.create()
+            debug(("msg", "http source sync"), ("flowName", flowName), ("body", json))
+            onComplete(doSchedule(source, trace, flowName, json)) {
+              result => complete(jsonResponse(result.getOrElse(PostResult(UnknownError))))
             }
           }
         }
-      )
-    val hostConf = Try(ctx.config.getString("akka.remote.netty.tcp.hostname")).getOrElse("localhost")
-    val host = if (hostConf == "") "localhost" else hostConf
-    val port = Try(ctx.config.getInt("horoscope.source.http.port")).getOrElse(5880)
-    bindingFuture = Http().bindAndHandle(route, host, port)
-    info(("msg", "start http source server"), ("host", host), ("port", port))
+      },
+      post {
+        path("scheduleAsync" / Segment / Segment / Segment / Remaining) { (source, trace, time, flowName) =>
+          entity(as[String]) { json =>
+            SystemLog.create()
+            debug(("msg", "http source async"), ("flowName", flowName), ("body", json))
+            onComplete(doScheduleAsync(source, trace, flowName, json)) {
+              result => complete(jsonResponse(result.getOrElse(PostResult(UnknownError))))
+            }
+          }
+        }
+      },
+      get {
+        path("schedule" / Segment / Segment / Segment / Remaining) { (source, trace, time, flowName) =>
+          parameterMap { params =>
+            SystemLog.create()
+            debug(("msg", "http source sync"), ("flowName", flowName), ("params", params))
+            onComplete(doSchedule(source, trace, flowName, params)) {
+              result => complete(jsonResponse(result.getOrElse(PostResult(UnknownError))))
+            }
+          }
+        }
+      },
+      get {
+        path("scheduleAsync" / Segment / Segment / Segment / Remaining) { (source, trace, time, flowName) =>
+          parameterMap { params =>
+            SystemLog.create()
+            debug(("msg", "http source async"), ("flowName", flowName), ("params", params))
+            onComplete(doScheduleAsync(source, trace, flowName, params)) {
+              result => complete(jsonResponse(result.getOrElse(PostResult(UnknownError))))
+            }
+          }
+        }
+      }
+    )
+  }
+
+  private def ctrl(): Route = {
+    concat(
+      post {
+        path("sourceCtrl") {
+          entity(as[String]) { json =>
+            SystemLog.create()
+            debug(("msg", "source control"), ("command", json))
+            onComplete(doSourceCtrl(json)) {
+              result =>
+                complete {
+                  val httpEntity = HttpEntity(ContentTypes.`application/json`, gson.toJson(result))
+                  HttpResponse().withEntity(httpEntity)
+                }
+            }
+          }
+        }
+      }
+    )
   }
 
   private def jsonResponse(result: PostResult): HttpResponse = {
@@ -110,13 +138,14 @@ class HttpSourceServer(implicit ctx: ApplicationContext) extends Logging {
     }
   }
 
-  def doPost(sourceName: String, body: String): Future[PostResult] = {
+  def doSchedule(sourceName: String, trace: String, flowName: String, body: Any): Future[PostResult] = {
     val p = Promise[PostResult]()
     Future {
       val source = sources.get(sourceName).getOrElse(null)
-      if (source != null && source.isInstanceOf[PushSource[String]]) {
+      if (source != null && source.isInstanceOf[HttpSource]) {
         try {
-          val instance = source.asInstanceOf[PushSource[String]].pushSync(body)
+          val instance = source.asInstanceOf[HttpSource]
+            .pushSync(trace, flowName, body)
           p.success(PostResult(Success, Value(instance)))
         } catch {
           case EventProcessException(err) =>
@@ -131,13 +160,14 @@ class HttpSourceServer(implicit ctx: ApplicationContext) extends Logging {
     p.future
   }
 
-  def doPostAsync(sourceName: String, body: String): Future[PostResult] = {
+  def doScheduleAsync(sourceName: String, trace: String, flowName: String, body: Any): Future[PostResult] = {
     val p = Promise[PostResult]()
     Future {
       val source = sources.get(sourceName).getOrElse(null)
-      if (source != null && source.isInstanceOf[PushSource[String]]) {
+      if (source != null && source.isInstanceOf[HttpSource]) {
         try {
-          val events = source.asInstanceOf[PushSource[String]].pushAsync(List[String](body))
+          val events = source.asInstanceOf[HttpSource]
+            .pushAsync(trace, flowName, List[Any](body))
           val event = events(0)
           if (event == null) {
             p.success(PostResult(FormatError))
@@ -157,13 +187,6 @@ class HttpSourceServer(implicit ctx: ApplicationContext) extends Logging {
     }
     p.future
   }
-
-  def stop(): Unit = {
-    // trigger unbinding from the port
-    info(("msg", "stop http source server"))
-    Await.ready(bindingFuture.flatMap(_.terminate(3 seconds)), 5 seconds)
-  }
-
 
   def doSourceCtrl(json: String): Future[Value] = {
     val p = Promise[Value]()
@@ -214,4 +237,14 @@ class HttpSourceServer(implicit ctx: ApplicationContext) extends Logging {
     p.future
   }
 
+  def stop(): Unit = {
+    // trigger unbinding from the port
+    info(("msg", "stop http source server"))
+    Await.ready(bindingFuture.flatMap(_.terminate(3 seconds)), 5 seconds)
+  }
+
+}
+
+object HttpSourceServer {
+  val HTTP_SOURCE_NAME = "http_source"
 }

@@ -6,9 +6,9 @@
 
 package com.didichuxing.horoscope.service.source
 
-import com.didichuxing.horoscope.core.FlowRuntimeMessage.{FlowEvent, FlowInstance}
+import com.didichuxing.horoscope.core.FlowRuntimeMessage._
 import com.didichuxing.horoscope.core.Sources.EventBuilder
-import com.didichuxing.horoscope.core.{EventBus, Source, SourceFactory, SyncEventBus}
+import com.didichuxing.horoscope.core._
 import com.didichuxing.horoscope.runtime.Value
 import com.didichuxing.horoscope.util.Logging
 import com.typesafe.config.Config
@@ -34,17 +34,17 @@ class PushSource[T](builder: EventBuilder[T, Value]) extends Source with Logging
 
   }
 
-  def pushAsync(raws: List[T]): List[FlowEvent] = {
+  def pushAsync(flowName: String, raws: List[T]): List[FlowEvent] = {
     val values = ListBuffer[Value]()
     raws.foreach(v => {
       values.append(builder(v))
     })
-    eventBus.process(values.toList)
+    eventBus.process(flowName, values.toList)
   }
 
-  def pushSync(raw: T): FlowInstance = {
+  def pushSync(flowName: String, raw: T): FlowInstance = {
     val startTime = System.currentTimeMillis()
-    val instance = eventBus.processSync(builder(raw))
+    val instance = eventBus.processSync(flowName, builder(raw))
     info(("msg", "sync process event"), ("proc_time", s"${System.currentTimeMillis() - startTime}ms"))
     instance
   }

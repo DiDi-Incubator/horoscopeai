@@ -54,13 +54,13 @@
             <artifactId>scalactic_${scala.binary.version}</artifactId>
             <version>3.0.1</version>
             <scope>test</scope>
-      </dependency>
+        </dependency>
         <dependency>
             <groupId>org.scalamock</groupId>
             <artifactId>scalamock-scalatest-support_${scala.binary.version}</artifactId>
             <version>3.5.0</version>
             <scope>test</scope>
-      </dependency>
+        </dependency>
     </dependencies>
 
     <dependencyManagement>
