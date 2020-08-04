@@ -1,0 +1,34 @@
+query ($user_id: String!)  {
+    userTrajectory(
+        identity: {
+            userId: $user_id
+        },
+        userType: DRIVER,
+        start: 1586404800,
+        end: 1586408400
+    )
+    {
+        userId
+        traces(limit: 5) {
+            timestamp
+            property {
+                speed
+                lat
+                lng
+                accuracy
+                type
+                map_match {
+                    proj_link_id
+                    map_version_vec
+                    proj_lat
+                    proj_lng
+                    other_version_result {
+                        proj_link_id
+                        proj_lat
+                        proj_lng
+                    }
+                }
+            }
+        }
+    }
+}

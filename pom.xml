@@ -28,7 +28,7 @@
         <kafka.version>0.10.2.1</kafka.version>
         <protobuf.version>3.6.0</protobuf.version>
         <thrift.version>0.9.3</thrift.version>
-        <guava.version>18.0</guava.version>
+        <guava.version>20.0</guava.version>
         <mysql.version>5.1.41</mysql.version>
         <thrift.version>0.9.3</thrift.version>
         <site.plugin.version>3.3</site.plugin.version>
@@ -41,8 +41,9 @@
     </properties>
 
     <modules>
-      <module>hbase-client</module>
-      <module>horoscope-core</module>
+        <module>hbase-client</module>
+        <module>horoscope-core</module>
+        <module>horoscope-didi</module>
     </modules>
 
     <dependencies>
@@ -50,12 +51,12 @@
             <groupId>org.scalactic</groupId>
             <artifactId>scalactic_${scala.binary.version}</artifactId>
             <version>3.0.1</version>
-      </dependency>
-      <dependency>
-          <groupId>org.scalamock</groupId>
-          <artifactId>scalamock-scalatest-support_${scala.binary.version}</artifactId>
-          <version>3.5.0</version>
-      </dependency>
+        </dependency>
+        <dependency>
+            <groupId>org.scalamock</groupId>
+            <artifactId>scalamock-scalatest-support_${scala.binary.version}</artifactId>
+            <version>3.5.0</version>
+        </dependency>
     </dependencies>
 
     <dependencyManagement>
@@ -584,9 +585,13 @@
                                 <goal>compile-custom</goal>
                             </goals>
                             <configuration>
-                                <protocArtifact>com.google.protobuf:protoc:${protobuf.version}:exe:${os.detected.classifier}</protocArtifact>
+                                <protocArtifact>
+                                    com.google.protobuf:protoc:${protobuf.version}:exe:${os.detected.classifier}
+                                </protocArtifact>
                                 <pluginId>grpc-java</pluginId>
-                                <pluginArtifact>io.grpc:protoc-gen-grpc-java:${grpc.version}:exe:${os.detected.classifier}</pluginArtifact>
+                                <pluginArtifact>
+                                    io.grpc:protoc-gen-grpc-java:${grpc.version}:exe:${os.detected.classifier}
+                                </pluginArtifact>
                             </configuration>
                         </execution>
                     </executions>
@@ -670,7 +675,8 @@
                             <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
                                 <resource>reference.conf</resource>
                             </transformer>
-                            <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                            <transformer
+                                    implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                         </transformers>
                     </configuration>
                 </plugin>
@@ -774,7 +780,8 @@
                 <reportSets>
                     <reportSet>
                         <reports>
-                            <report>report-only</report> <!-- select only one report from: report, integration-report and report-only reporters -->
+                            <report>report-only
+                            </report> <!-- select only one report from: report, integration-report and report-only reporters -->
                         </reports>
                     </reportSet>
                 </reportSets>

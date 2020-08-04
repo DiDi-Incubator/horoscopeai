@@ -1,0 +1,11 @@
+# /root/demo-graphql
+
+* GraphQLDemo
+``` graphql
+post @{graphql-service}/graphiql?callerId=super-dog-food demo.graphql
+```
+
+***
+userid <- @user_id
+data <- GraphQLDemo(user_id=userid.to_string())
+***
