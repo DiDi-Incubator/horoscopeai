@@ -16,6 +16,7 @@ import scala.collection.JavaConversions._
 import scala.collection.mutable
 import scala.concurrent.Await
 import scala.concurrent.duration._
+import scala.util.Try
 
 /**
  * 本地版本的星盘实现
@@ -77,7 +78,7 @@ class FlowManager(implicit ctx: ApplicationContext) extends Logging {
     sourceList.foreach(sourceConfig => {
       val factoryName = sourceConfig.getString("factory-name")
       val sourceName = sourceConfig.getString("source-name")
-      val flowName = sourceConfig.getString("flow-name")
+      val flowName = Try(sourceConfig.getString("flow-name")).getOrElse("dead_letter")
       startSource(factoryName, sourceConfig)(sourceName, flowName)
     })
     //start http source server

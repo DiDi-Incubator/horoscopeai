@@ -6,7 +6,7 @@
 
 package com.didichuxing.horoscope.service.source
 
-import com.didichuxing.horoscope.core.{EventBus, SyncEventBus}
+import com.didichuxing.horoscope.core.SyncEventBus
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.{FlowEvent, FlowInstance}
 import com.didichuxing.horoscope.runtime.Value
 import com.didichuxing.horoscope.service.ApplicationContext
@@ -32,7 +32,7 @@ abstract class AbstractEventBus(sourceName: String, flowName: String, params: Co
 
   def newEventProcessor(): EventProcessor
 
-  override def process(sourceEvents: List[Value]): List[FlowEvent] = {
+  override def process(flowName: String, sourceEvents: List[Value]): List[FlowEvent] = {
     //返回带序号的flowEvents
     val seqFlowEvents = EventBuilders.flowEventBuilder(sourceEvents, sourceName, flowName, params)(ctx.builtIn)
     //排除格式错误的消息列表
@@ -45,6 +45,28 @@ abstract class AbstractEventBus(sourceName: String, flowName: String, params: Co
     } else {
       mergeEvents(seqFlowEvents, processEvents, List[FlowEvent]())
     }
+  }
+
+  override def process(sourceEvents: List[Value]): List[FlowEvent] = {
+    process(flowName, sourceEvents)
+  }
+
+  override def processSync(flowName: String, value: Value): FlowInstance = {
+    //返回带序号的flowEvents
+    val seqFlowEvents = EventBuilders.flowEventBuilder(List[Value](value), sourceName, flowName, params)(ctx.builtIn)
+    //排除格式错误的消息列表
+    val processEvents = seqFlowEvents.filter(v => v.flowEvent != null)
+    //按顺序返回处理后的消息列表
+    if (processEvents.size > 0) {
+      doProcessSync(processEvents(0).flowEvent)
+    } else {
+      //格式错误
+      throw EventProcessException(EventProcessErrorCode.FormatError)
+    }
+  }
+
+  override def processSync(value: Value): FlowInstance = {
+    processSync(flowName, value)
   }
 
   def mergeEvents(seqFlowEvents: List[SeqFlowEvent], processEvents: List[SeqFlowEvent],
@@ -75,21 +97,5 @@ abstract class AbstractEventBus(sourceName: String, flowName: String, params: Co
       new Array[FlowEvent](seqFlowEvents.size).toList
     }
   }
-
-  override def processSync(value: Value): FlowInstance = {
-    //返回带序号的flowEvents
-    val seqFlowEvents = EventBuilders.flowEventBuilder(List[Value](value), sourceName, flowName, params)(ctx.builtIn)
-    //排除格式错误的消息列表
-    val processEvents = seqFlowEvents.filter(v => v.flowEvent != null)
-    //按顺序返回处理后的消息列表
-    if (processEvents.size > 0) {
-      doProcessSync(processEvents(0).flowEvent)
-    } else {
-      //格式错误
-      throw EventProcessException(EventProcessErrorCode.FormatError)
-    }
-  }
-
-  def doProcessSync(event: FlowEvent): FlowInstance
 
 }

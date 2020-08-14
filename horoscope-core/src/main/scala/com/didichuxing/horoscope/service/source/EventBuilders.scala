@@ -116,7 +116,7 @@ object EventBuilders extends Logging {
           .setEventId(eventId.underlying)
           .setFlowName(flowName)
           .setTraceId(traceId.asInstanceOf[Text].underlying)
-          .putArgument(s"@${sourceName}", TraceVariable.newBuilder().setValue(dictValue.as[FlowValue]).build())
+          .putArgument("@", TraceVariable.newBuilder().setValue(dictValue.as[FlowValue]).build())
         flowEvents.append(SeqFlowEvent(i, flowEvent.build()))
       } else {
         //格式错误
