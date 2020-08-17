@@ -45,11 +45,11 @@ class MessageConverter[T <: MessageOrBuilder] extends Value.From[T] {
         case (field: FieldDescriptor, data: Any) =>
           val fieldType = field.getJavaType()
           if (field.isMapField) {
-            values.put(field.getJsonName, getMapValue(message, field))
+            values.put(field.getName, getMapValue(message, field))
           } else if (field.isRepeated) {
-            values.put(field.getJsonName, getListValue(message, field))
+            values.put(field.getName, getListValue(message, field))
           } else {
-            values.put(field.getJsonName, getSingleValue(data, fieldType))
+            values.put(field.getName, getSingleValue(data, fieldType))
           }
       }
       new SimpleDict(values.toMap)
