@@ -160,7 +160,7 @@ class ExecutorSuite extends FunSuite
     val event = newEvent("0", "a")("v2/hello")
     whenReady(executor.execute(event)) { instance =>
       instance("procedure.length()").as[Int] shouldBe 1
-      instance("procedure[0].flowName").as[String] shouldBe "/v2/hello"
+      instance("procedure[0].flow_name").as[String] shouldBe "/v2/hello"
       instance("procedure[0].assign.result").as[String] shouldBe "hello world!"
     }
   }
@@ -243,7 +243,7 @@ class ExecutorSuite extends FunSuite
     whenReady(executor.execute(event)) { instance =>
       instance("procedure[0].composite.length()").as[Int] shouldBe 1
       instance("procedure[0].composite.result.compositor").as[String] shouldBe "Concat"
-      instance("procedure[0].composite.result.batchSize").as[Int] shouldBe 2
+      instance("procedure[0].composite.result.batch_size").as[Int] shouldBe 2
       instance("procedure[0].composite.result.result").as[Map[String, String]] shouldBe Map("x" -> "a-1", "y" -> "b-2")
     }
   }
@@ -405,28 +405,28 @@ class ExecutorSuite extends FunSuite
       instance("procedure[0].choice").as[Seq[String]] shouldBe Seq("init")
       instance("procedure[0].assign.result").as[Int] shouldBe 0
       instance("update[0].value").as[Int] shouldBe 0
-      instance("update[0].reference.flowName").as[String] shouldBe "/v2/trace"
+      instance("update[0].reference.flow_name").as[String] shouldBe "/v2/trace"
       instance("update[0].reference.name").as[String] shouldBe "$count"
-      instance("update[0].reference.eventId").as[String] shouldBe "1"
+      instance("update[0].reference.event_id").as[String] shouldBe "1"
     }
 
     whenReady(two) { instance =>
       instance("procedure[0].choice").as[Seq[String]] shouldBe Seq("add")
       instance("procedure[0].assign.result").as[Int] shouldBe 1
-      instance("procedure[0].load[?(_.value == 0)].reference.eventId[-][0]").as[String] shouldBe "1"
-      instance("update[?(_.value == 1)].reference.eventId[-][0]").as[String] shouldBe "2"
+      instance("procedure[0].load[?(_.value == 0)].reference.event_id[-][0]").as[String] shouldBe "1"
+      instance("update[?(_.value == 1)].reference.event_id[-][0]").as[String] shouldBe "2"
     }
 
     whenReady(three) { instance =>
       instance("procedure[0].choice") shouldBe NULL
       instance("procedure[0].assign.result").as[Int] shouldBe 1
-      instance("procedure[0].load[?(_.value == 1)].reference.eventId[-][0]").as[String] shouldBe "2"
+      instance("procedure[0].load[?(_.value == 1)].reference.event_id[-][0]").as[String] shouldBe "2"
     }
 
     whenReady(four) { instance =>
       instance("procedure[0].choice").as[Seq[String]] shouldBe Seq("add")
       instance("procedure[0].assign.result").as[Int] shouldBe 2
-      instance("procedure[0].load[?(_.value == 1)].reference.eventId[-][0]").as[String] shouldBe "2"
+      instance("procedure[0].load[?(_.value == 1)].reference.event_id[-][0]").as[String] shouldBe "2"
     }
   }
 
@@ -492,17 +492,17 @@ class ExecutorSuite extends FunSuite
   test("v2/schedule") {
     val event = newEvent("1", "a")("v2/schedule" )
     whenReady(executor.execute(event)) { instance =>
-      instance("schedule[0].parent.eventId").as[String] shouldBe "1"
-      instance("schedule[0].parent.traceId").as[String] shouldBe "a"
-      instance("schedule[0].parent.flowName").as[String] shouldBe "/v2/schedule"
+      instance("schedule[0].parent.event_id").as[String] shouldBe "1"
+      instance("schedule[0].parent.trace_id").as[String] shouldBe "a"
+      instance("schedule[0].parent.flow_name").as[String] shouldBe "/v2/schedule"
 
-      instance("schedule[0].flowName").as[String] shouldBe "/v2/schedule"
-      instance("schedule[0].traceId").as[String] shouldBe "a"
+      instance("schedule[0].flow_name").as[String] shouldBe "/v2/schedule"
+      instance("schedule[0].trace_id").as[String] shouldBe "a"
       instance("schedule[0].argument.x.value").as[Int] shouldBe 1
       instance("schedule[0].argument.y.value").as[Int] shouldBe 2
 
-      instance("schedule[1].flowName").as[String] shouldBe "/v2/schedule"
-      instance("schedule[1].traceId").as[String] shouldBe "b"
+      instance("schedule[1].flow_name").as[String] shouldBe "/v2/schedule"
+      instance("schedule[1].trace_id").as[String] shouldBe "b"
     }
   }
 
@@ -510,12 +510,12 @@ class ExecutorSuite extends FunSuite
     val event = newEvent("1", "a")("v2/pi", "n" -> Value(32))
     whenReady(executor.execute(event)) { instance =>
       instance("procedure[0].assign.pi").as[Double] shouldBe 3.14159265 +- 0.00000001
-      instance(""" procedure[?(_.flowName == "/v2/acrcot")].length() """).as[Int] shouldBe 66
-      instance(""" procedure[?(_.flowName == "/v2/acrcot" and _.scope[0] == "left")].length() """).as[Int] shouldBe 33
-      instance(""" procedure[?(_.flowName == "/v2/acrcot" and _.scope[0] == "right")].length() """).as[Int] shouldBe 33
+      instance(""" procedure[?(_.flow_name == "/v2/acrcot")].length() """).as[Int] shouldBe 66
+      instance(""" procedure[?(_.flow_name == "/v2/acrcot" and _.scope[0] == "left")].length() """).as[Int] shouldBe 33
+      instance(""" procedure[?(_.flow_name == "/v2/acrcot" and _.scope[0] == "right")].length() """).as[Int] shouldBe 33
 
       val lastProcedure =
-        instance(""" procedure[?(_.flowName == "/v2/acrcot" and _.scope[0] == "left")][-][-1] """).as[ValueDict]
+        instance(""" procedure[?(_.flow_name == "/v2/acrcot" and _.scope[0] == "left")][-][-1] """).as[ValueDict]
       lastProcedure.eval(""" scope[?(_ == "rest")].length() """).as[Int] shouldBe 32
     }
   }

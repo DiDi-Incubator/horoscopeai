@@ -136,6 +136,8 @@ indices
 
 variable
     : ('@' | '$')? name
+    | '@'
+    | '$'
     ;
 
 name

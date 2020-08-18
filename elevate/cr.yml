@@ -1,0 +1,7 @@
+strategy: ownerOne
+owners: wenxiang
+reviewers: weilunkai,chaiyi,liangguorong,wenxiang,huchengyi
+force: master
+refer: OE
+exceptSelfAccept: true
+subCodeOwner: true
