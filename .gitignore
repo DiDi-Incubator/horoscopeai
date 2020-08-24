@@ -10,3 +10,4 @@ target
 .DS_Store
 h2_store.*.db
 logs/*
+output/*

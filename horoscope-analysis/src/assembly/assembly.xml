@@ -1,0 +1,18 @@
+<assembly>
+    <id>analysis-dist</id>
+    <formats>
+        <format>dir</format>
+    </formats>
+    <includeBaseDirectory>false</includeBaseDirectory>
+    <dependencySets>
+        <dependencySet>
+            <useProjectArtifact>true</useProjectArtifact>
+            <outputFileNameMapping>
+                ${artifact.artifactId}.${artifact.extension}
+            </outputFileNameMapping>
+            <includes>
+                <include>com.didichuxing.horoscope:horoscope-analysis:jar</include>
+            </includes>
+        </dependencySet>
+    </dependencySets>
+</assembly>

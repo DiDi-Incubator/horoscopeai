@@ -1,4 +1,4 @@
-strategy: ownerOne
+strategy: default
 owners: wenxiang
 reviewers: weilunkai,chaiyi,liangguorong,wenxiang,huchengyi
 force: master

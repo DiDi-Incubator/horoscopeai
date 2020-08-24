@@ -113,6 +113,8 @@ message FlowInstance {
         map<string, Composite> composite = 7;
         map<string, FlowValue> assign = 8;
         repeated TraceVariable load = 9;
+        optional int64 start_time = 10;
+        optional int64 end_time = 11;
     }
 
     optional string flow_id = 1;
