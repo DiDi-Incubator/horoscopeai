@@ -122,7 +122,7 @@ class FlowInterpreter(
       flow = getFlowByName(flowName).getOrElse(throw new NoSuchMethodException(flowName)),
       scopes = scopes,
       alias = procedure => args.iterator.map({
-        case(name, variable) =>
+        case (name, variable) =>
           val key = if (name.startsWith("@")) name else "@" + name
           (key, new PlaceholderContext(key, Try(Value(variable.getValue)))(procedure))
       }).toMap
@@ -159,7 +159,7 @@ class FlowInterpreter(
     }
 
     def newContext(node: Node): Context = node match {
-      case Placeholder(name) =>args.getOrElse(name, new PlaceholderContext(name))
+      case Placeholder(name) => args.getOrElse(name, new PlaceholderContext(name))
       case include: Include => new IncludeContext(include)
       case schedule: Schedule => new ScheduleContext(schedule)
       case load: Load => new LoadContext(load)
@@ -210,7 +210,7 @@ class FlowInterpreter(
     lazy val builder: FlowEvent.Builder = Main.instance.addScheduleBuilder()
 
     override protected def execute(): Dependencies = {
-      using(schedule.args ++ schedule.trace.map("$" -> _)) { args  =>
+      using(schedule.args ++ schedule.trace.map("$" -> _)) { args =>
         builder.setEventId(getEventId())
         builder.setTraceId(
           args.get("$").map({
@@ -291,7 +291,7 @@ class FlowInterpreter(
         })
       })
 
-      future onFailure   {
+      future onFailure {
         case cause: Throwable =>
           manager ! CommitEvent(traceId, eventId, Failure(cause), Map.empty)
           Map.empty
@@ -443,8 +443,8 @@ class FlowInterpreter(
     var future: Future[Value] = _
 
     override protected def execute(): Dependencies = {
-      if (future == null) {
-        using(composite.context) { context =>
+      using(composite.context) { context =>
+        if (future == null) {
           val argument = composite.argument(Value(context)).as[ValueDict]
 
           log.setCompositor(composite.compositor)
@@ -455,10 +455,8 @@ class FlowInterpreter(
           future onComplete { result =>
             self ! CompositeResult(this, result)
           }
-
-          waits()
         }
-      } else {
+
         waits()
       }
     }
@@ -477,11 +475,11 @@ class FlowInterpreter(
     override def name: String = composite.name
 
     val log: Procedure.Composite.Builder = Procedure.Composite.newBuilder()
-    var future: Future[Document] = _
+    var future: Future[Value] = _
 
     override protected def execute(): Dependencies = {
-      if (future == null) {
-        using(composite.context) { context =>
+      using(composite.context) { context =>
+        if (future == null) {
           val table = composite.argument.evaluate(Value(context)).as[Document] match {
             case table: TableView => table
             case doc: Document => doc.table.select(*)
@@ -496,16 +494,15 @@ class FlowInterpreter(
             case (indices, dict: ValueDict) => indices -> dict
           }).toSeq
 
-          val batchResult = Future.sequence(batchArgs.map({
+          future = Future.sequence(batchArgs.map({
             case (indices, dict) => composite.impl.composite(dict).map(indices -> _)
           })).map(records => table.update(records).value)
 
-          batchResult onComplete { value =>
+          future onComplete { value =>
             self ! BatchCompositeResult(this, value)
           }
-          waits()
         }
-      } else {
+
         waits()
       }
     }
@@ -530,6 +527,7 @@ class FlowInterpreter(
   }
 
   trait Context {
+
     import Context._
 
     private var result: Option[Try[Value]] = None
@@ -547,9 +545,11 @@ class FlowInterpreter(
 
     protected def execute(): Dependencies = waits()
 
-    protected def onComplete: Handle = { case _ => }
+    protected def onComplete: Handle = {
+      case _ =>
+    }
 
-    final def run(depth: Int = 0): Unit = if(!isDone) {
+    final def run(depth: Int = 0): Unit = if (!isDone) {
       var remainingDependencies: Iterable[Context] = Iterable.empty
       do {
         remainingDependencies = tryExecute(depth)
@@ -565,7 +565,7 @@ class FlowInterpreter(
         val remainingDependencies = execute().filter(!_.isDone)
         remainingDependencies foreach {
           case dependency: Context if dependency.callbacks.contains(this) =>
-            // already notified, just wait
+          // already notified, just wait
           case include: IncludeContext =>
             // avoid keep thread too busy, allowing other trace to run
             self ! Continue(include)
