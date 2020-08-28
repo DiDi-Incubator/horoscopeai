@@ -9,17 +9,18 @@ import java.util.{Properties, UUID}
 
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowInstance
 import com.didichuxing.horoscope.logging.ods.OdsLogger
-import com.didichuxing.horoscope.util.{Logging, Utils}
+import com.didichuxing.horoscope.util.Logging
 import com.typesafe.config.Config
 import org.apache.kafka.clients.producer.{Callback, KafkaProducer, ProducerRecord, RecordMetadata}
-import org.apache.kafka.common.serialization.StringSerializer
+import org.apache.kafka.common.serialization.{BytesSerializer, StringSerializer}
+import org.apache.kafka.common.utils.Bytes
 
 import scala.util.Try
 
 class KafkaOdsLogger(config: Config) extends OdsLogger with LogHelper with Logging {
   import scala.collection.JavaConverters._
   private val producerConfig = getProducerConfig(config.getConfig("horoscope.ods-logger.kafka"))
-  private val producer = new KafkaProducer[String, String](producerConfig)
+  private val producer = new KafkaProducer[String, Bytes](producerConfig)
   private val topic = Try(config.getString("horoscope.ods-logger.kafka.topic")).getOrElse("")
   assert(topic.size > 0, "topic is null")
   info(("msg", "KafkaOdsLogger started"))
@@ -27,8 +28,8 @@ class KafkaOdsLogger(config: Config) extends OdsLogger with LogHelper with Loggi
   override def log(flowInstance: FlowInstance): Unit = {
     try {
       // TODO: when switch to v2, no need to simplify
-      val transLog = flowInstance.toBase64
-      val record = new ProducerRecord[String, String](topic, null,
+      val transLog = Bytes.wrap(flowInstance.toByteArray)
+      val record = new ProducerRecord[String, Bytes](topic, null,
         System.currentTimeMillis(),
         UUID.randomUUID().toString, transLog)
       producer.send(record, new Callback {
@@ -56,7 +57,7 @@ class KafkaOdsLogger(config: Config) extends OdsLogger with LogHelper with Loggi
         info(("msg", "kafka ods logger config"), (entry.getKey, entry.getValue.unwrapped().toString))
       }
       properties.setProperty("key.serializer", classOf[StringSerializer].getCanonicalName)
-      properties.setProperty("value.serializer", classOf[StringSerializer].getCanonicalName)
+      properties.setProperty("value.serializer", classOf[BytesSerializer].getCanonicalName)
       properties
     } catch {
       case e: Exception =>

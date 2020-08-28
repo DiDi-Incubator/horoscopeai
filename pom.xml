@@ -46,6 +46,7 @@
         <module>horoscope-core</module>
         <module>horoscope-didi</module>
         <module>horoscope-console</module>
+        <module>horoscope-analysis</module>
     </modules>
 
     <dependencies>

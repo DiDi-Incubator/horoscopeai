@@ -11,8 +11,13 @@ import com.typesafe.config.Config
 
 object OdsLoggerFactory {
 
-  def newCompositeLogger(config: Config): OdsLogger =
-    new CompositeOdsLogger(Seq(newLocalLogger(config), new KafkaOdsLogger(config)))
+  def newLogger(config: Config): OdsLogger = {
+    if (config.getBoolean("horoscope.ods-logger.local-enabled")) {
+      new CompositeOdsLogger(Seq(newLocalLogger(config), new KafkaOdsLogger(config)))
+    } else {
+      newKafkaLogger(config)
+    }
+  }
 
   def newLocalLogger(config: Config): OdsLogger = new LocalOdsLogger(PublicLog(config))
 

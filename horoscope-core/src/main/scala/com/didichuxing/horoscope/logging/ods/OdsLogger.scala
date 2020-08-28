@@ -5,7 +5,7 @@
 
 package com.didichuxing.horoscope.logging.ods
 
-import com.didichuxing.horoscope.core.FlowRuntimeMessage.{FlowInstance, FlowInstanceOrBuilder}
+import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowInstance
 
 trait OdsLogger {
   def log(flowInstance: FlowInstance): Unit

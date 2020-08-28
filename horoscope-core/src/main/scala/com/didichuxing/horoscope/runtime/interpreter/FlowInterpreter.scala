@@ -143,6 +143,7 @@ class FlowInterpreter(
         .setFlowId(flow.id)
         .setFlowName(flow.name)
         .addAllScope(scopes)
+        .setStartTime(System.currentTimeMillis())
     }
 
     override protected def execute(): Dependencies = {
@@ -156,6 +157,7 @@ class FlowInterpreter(
         for ((name, argument) <- flow.arguments if argument.isReady) {
           log.putArgument(name, argument.value.as[FlowValue])
         }
+        log.setEndTime(System.currentTimeMillis())
     }
 
     def newContext(node: Node): Context = node match {
@@ -201,6 +203,7 @@ class FlowInterpreter(
           }
           procedure.nodes(placeholder.index) = target.nodes(target.flow.variables(name).index)
         }
+        procedure.log.setEndTime(System.currentTimeMillis())
     }
   }
 
@@ -431,6 +434,7 @@ class FlowInterpreter(
         if (!name.startsWith("-")) {
           procedure.log.putAssign(name, value.as[FlowValue])
         }
+        procedure.log.setEndTime(System.currentTimeMillis())
     }
   }
 
@@ -663,6 +667,7 @@ class FlowInterpreter(
         }
 
         procedure.log.putFault(name, fault.build())
+        procedure.log.setEndTime(System.currentTimeMillis())
     }
   }
 }
