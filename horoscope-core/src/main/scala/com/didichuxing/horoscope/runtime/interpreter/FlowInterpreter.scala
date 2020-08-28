@@ -113,13 +113,13 @@ class FlowInterpreter(
     val flow: Flow, val scopes: Seq[String], alias: FlowContext => Map[String, Context]
   ) extends Context {
     def this(flowName: String, scopes: Seq[String], args: Map[String, Context]) = this(
-      flow = getFlowByName(flowName).getOrElse(throw new NoSuchMethodException(flowName)),
+      flow = getFlowByName(flowName),
       scopes = scopes,
       alias = _ => args
     )
 
     def this(flowName: String, scopes: Seq[String], args: java.util.Map[String, TraceVariable]) = this(
-      flow = getFlowByName(flowName).getOrElse(throw new NoSuchMethodException(flowName)),
+      flow = getFlowByName(flowName),
       scopes = scopes,
       alias = procedure => args.iterator.map({
         case (name, variable) =>

@@ -91,21 +91,15 @@ class DefaultEventProcessor(sourceName: String, params: Config)
   }
 
   def exec(flowEvent: FlowEvent) {
-    val flowName = flowEvent.getFlowName
-    if(ctx.flowStore.getFlowByName(flowName).isDefined) {
-      //flow execute callback
-      flowExecutor.execute(flowEvent).onComplete {
-        case Success(flowInstance) =>
-          onSuccess(flowInstance)
-        case Failure(exception) =>
-          //flowEvent闭包
-          onFail(flowEvent, exception)
-      }
-      debug(("msg", "event execute"), ("event", Value(flowEvent).toJson))
-    } else {
-      backPress.release()
-      warn(("msg", "event execute flow name not exist"), ("flowName", flowName))
+    //flow execute callback
+    flowExecutor.execute(flowEvent).onComplete {
+      case Success(flowInstance) =>
+        onSuccess(flowInstance)
+      case Failure(exception) =>
+        //flowEvent闭包
+        onFail(flowEvent, exception)
     }
+    debug(("msg", "event execute"), ("event", Value(flowEvent).toJson))
   }
 
   def onSuccess(flowInstance: FlowInstance): Unit = {
