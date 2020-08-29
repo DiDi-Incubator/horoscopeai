@@ -47,6 +47,7 @@
         <module>horoscope-didi</module>
         <module>horoscope-console</module>
         <module>horoscope-analysis</module>
+        <module>horoscope-analysis-offline</module>
     </modules>
 
     <dependencies>

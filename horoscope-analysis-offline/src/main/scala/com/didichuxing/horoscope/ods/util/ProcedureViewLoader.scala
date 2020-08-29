@@ -4,53 +4,60 @@
  */
 
 package com.didichuxing.horoscope.ods.util
-
-import com.didichuxing.horoscope.util.Logging
+import org.apache.hadoop.fs.Path
 import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.storage.StorageLevel
 
 /**
  * Kafka Pb Bytes => Flink APP => Kafka Json => HDFS => ProcedureViewLoader => Hive Table
- * Extract from json
+ * Extract from json, then save as ORC Hive Table
  */
 class ProcedureViewLoader(
   @transient val sparkSession: SparkSession,
   basePath: String,
-  targetTable: String) extends Logging with Serializable {
+  targetTable: String) extends Serializable {
   import org.apache.spark.sql.functions._
   import sparkSession.implicits._
+
+  private def isExists(path: String): Boolean = {
+    val p = new Path(s"$path/_SUCCESS")
+    val fs = p.getFileSystem(sparkSession.sparkContext.hadoopConfiguration)
+    fs.exists(p)
+  }
 
   // scalastyle:off
   def run(year: String, month: String, day: String, hour: String): Unit = {
     val startTime = System.currentTimeMillis()
     val inputPath = s"${basePath}/${year}/${month}/${day}/${hour}"
     println(s"Starting to extract ${inputPath}")
-    val input = sparkSession.read.format("text").load(inputPath)
-    input.persist(StorageLevel.MEMORY_AND_DISK)
-    val inputCount = input.count()
-    println(s"Input count ${inputCount}")
-    val transformed = input.rdd.filter(_.getAs[String](0).length > 0)
-      .map { r => EtlUtil.decodeAsProcedureView(r.getAs[String](0))}
-    if (inputCount > 0) {
-      val output = sparkSession.createDataset(transformed)
-        .withColumn("year", lit(year))
-        .withColumn("month", lit(month))
-        .withColumn("day", lit(day))
-        .withColumn("hour", lit(hour))
-      output.printSchema()
-      output.write.insertInto(targetTable)
-      println(s"Output rows ${output.count()}, time taken ${System.currentTimeMillis() - startTime} ms")
+    if (isExists(inputPath)) {
+      val input = sparkSession.read.format("text").load(inputPath)
+      input.persist(StorageLevel.MEMORY_AND_DISK)
+      val inputCount = input.count()
+      println(s"Input count ${inputCount}")
+      val transformed = input.rdd.filter(_.getAs[String](0).length > 0)
+        .map { r => EtlUtil.decodeAsProcedureView(r.getAs[String](0))}
+      if (inputCount > 0) {
+        val output = sparkSession.createDataset(transformed)
+          .withColumn("year", lit(year))
+          .withColumn("month", lit(month))
+          .withColumn("day", lit(day))
+          .withColumn("hour", lit(hour))
+        output.printSchema()
+        output.write.insertInto(targetTable)
+        println(s"Output rows ${output.count()}, time taken ${System.currentTimeMillis() - startTime} ms")
+      } else {
+        println(s"Input ${inputPath} is empty")
+      }
     } else {
-      println("Input is empty")
+      println(s"Input path ${inputPath} doesn't exist")
     }
-
   }
 }
 
-object ProcedureViewLoader extends Logging {
-  def run(basePath: String, targetTable: String, dateTime: String, offsetHour: Int): Unit = {
-    val dateRanges = DateUtil.dateRange(dateTime, offsetHour)
-    println(s"Prepared env, basePath ${basePath}, date ranges: ${dateRanges.mkString("[", ",", "]")}")
+object ProcedureViewLoader {
+  def run(basePath: String, targetTable: String, dateTime: String): Unit = {
+    println(s"Prepared env, basePath ${basePath}, dateTime ${dateTime}")
     val spark = EtlUtil.createSparkSession(this.getClass.getCanonicalName)
     val extractor = new ProcedureViewLoader(spark, basePath, targetTable)
     val year = dateTime.substring(0, 4)
@@ -80,6 +87,6 @@ object ProcedureViewLoader extends Logging {
         dateTime = d
       case _ =>
     }
-    run(basePath, targetTable, dateTime, offsetHour)
+    run(basePath, targetTable, dateTime)
   }
 }

@@ -46,6 +46,4 @@ object Implicits {
 
     def toJson(implicit gson: Gson): String = v.toJson
   }
-
-
 }
