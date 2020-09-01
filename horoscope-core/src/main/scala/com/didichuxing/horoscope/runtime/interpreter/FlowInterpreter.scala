@@ -320,7 +320,7 @@ class FlowInterpreter(
             }
             done(Value(variable.getValue))
           case _ =>
-            done()
+            done(Failure(UninitializedFieldError(load.name)))
         }
       } else {
         Trace.load onSuccess {
@@ -583,7 +583,7 @@ class FlowInterpreter(
         }
         remainingDependencies
       } catch {
-        case cause: Exception =>
+        case cause: Throwable =>
           done(Failure(cause))
       }
     }

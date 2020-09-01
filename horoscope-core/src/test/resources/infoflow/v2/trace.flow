@@ -6,7 +6,7 @@
 
 ***
     <> {
-        ? init = $count == null
+        ? init = $count == null !! true
         => {
             $count <- 0
         }
