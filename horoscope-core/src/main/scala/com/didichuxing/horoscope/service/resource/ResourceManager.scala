@@ -126,7 +126,6 @@ class DefaultResourceManager(implicit ctx: ApplicationContext) extends ResourceM
   implicit val zkClient = ctx.zkClient
   implicit val scheduler = ctx.scheduler
   implicit val ec = ctx.sourceExecutionContext.getExecutionContext()
-  val masterSelectorPath = config.getString("horoscope.zookeeper.cluster.path")
   var localParticipantId: String = ""
   //启动时，第一次选主的回调
   val leaderSelectorPromise = Promise[Participant]()
@@ -268,6 +267,7 @@ class DefaultResourceManager(implicit ctx: ApplicationContext) extends ResourceM
       participants.put(localParticipantId, localPart)
     }
     //启动选主服务
+    val masterSelectorPath = zkClient.getClusterPath()
     leaderLatch = zkClient.leaderLatch(masterSelectorPath, localParticipantId)
     leaderLatch.addListener(new LeaderLatchListener() {
       override def isLeader: Unit = {
@@ -345,6 +345,7 @@ class DefaultResourceManager(implicit ctx: ApplicationContext) extends ResourceM
       }
     }
     //监听zk,slaver注册
+    val masterSelectorPath = zkClient.getClusterPath()
     zkWatcher = zkClient.watchNode(masterSelectorPath, SlaverListener)
     //加载scheduler数据
     scheduler.recovery(this)

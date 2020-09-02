@@ -6,6 +6,8 @@
 
 package com.didichuxing.horoscope.service.storage
 
+import akka.http.scaladsl.server.Directives._
+import akka.http.scaladsl.server.Route
 import com.didichuxing.horoscope.core.TraceStore
 import com.typesafe.config.Config
 
@@ -21,4 +23,11 @@ abstract class AbstractTraceStore extends TraceStore {
 
   }
 
+  override def api(): Route = {
+    concat(
+      get {
+        complete(s"api unsupported")
+      }
+    )
+  }
 }

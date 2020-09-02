@@ -33,7 +33,6 @@ class FlowWorker(implicit ctx: ApplicationContext) extends Logging {
   def startService(): Unit = {
     flowExecutor.start()
     scheduler.start(flowExecutor, sourceFactories)
-    zkClient.start(config)
     resourceManager.start()
     timeTrigger.start(scheduler)
     info("All service started")

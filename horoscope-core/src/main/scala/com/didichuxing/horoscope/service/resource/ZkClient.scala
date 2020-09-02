@@ -6,11 +6,10 @@
 
 package com.didichuxing.horoscope.service.resource
 
-import java.lang.reflect.Type
 import java.nio.charset.StandardCharsets
 
-import com.google.gson.GsonBuilder
-import com.typesafe.config.Config
+import com.didichuxing.horoscope.util.Constants._
+import com.typesafe.config.{Config, ConfigRenderOptions}
 import org.apache.curator.framework.recipes.cache.{PathChildrenCache, PathChildrenCacheListener}
 import org.apache.curator.framework.recipes.leader.LeaderLatch
 import org.apache.curator.framework.{CuratorFramework, CuratorFrameworkFactory}
@@ -18,27 +17,24 @@ import org.apache.curator.retry.RetryForever
 import org.apache.zookeeper.CreateMode
 
 import scala.collection.JavaConversions._
+import scala.util.Try
 
-class ZkClient {
+class ZkClient(config: Config) {
 
-  var curator: CuratorFramework = _
-  val gson = new GsonBuilder().create()
-
-  /**
-   * 启动服务
-   */
-  def start(config: Config): Unit = {
-    val servers = config.getString("horoscope.zookeeper.servers")
-    val ns = config.getString("horoscope.zookeeper.namespace")
-    curator = CuratorFrameworkFactory.builder()
-      .connectString(servers)
-      .namespace(ns)
-      .sessionTimeoutMs(40000)
-      .connectionTimeoutMs(40000)
-      .retryPolicy(new RetryForever(5000))
-      .build()
-    curator.start()
-  }
+  val servers = config.getString("horoscope.zookeeper.servers")
+  val namespace = Try(config.getString("horoscope.zookeeper.namespace")).getOrElse("horoscope6")
+  val clusterConfig = config.getConfig("horoscope.zookeeper.cluster")
+  val clusterPath = s"/${Try(clusterConfig.getString("name")).getOrElse("")}"
+  val curator = CuratorFrameworkFactory.builder()
+    .connectString(servers)
+    .namespace(namespace)
+    .sessionTimeoutMs(40000)
+    .connectionTimeoutMs(40000)
+    .retryPolicy(new RetryForever(5000))
+    .build()
+  curator.start()
+  create(clusterPath)
+  setData(clusterPath, clusterConfig)
 
   /**
    * 停止服务
@@ -46,6 +42,18 @@ class ZkClient {
   def stop(): Unit = {
     assert(curator != null, "curator is null")
     curator.close()
+  }
+
+  def getSourcePath(): String = {
+    s"$clusterPath/$ZK_SOURCE_PATH"
+  }
+
+  def getClusterPath(): String = {
+    s"$clusterPath/$ZK_CLUSTER_PATH"
+  }
+
+  def flowsCurator(): CuratorFramework = {
+    curator.usingNamespace(s"$namespace$clusterPath/$ZK_FLOW_PATH")
   }
 
   def exist(path: String): Boolean = {
@@ -88,37 +96,14 @@ class ZkClient {
     }
   }
 
-  /**
-   * 将对象转换为json传，放入节点
-   *
-   * @param path
-   * @param data
-   */
-  def setData[T](path: String, data: T, ct: Type): Boolean = {
+  def setData(path: String, config: Config): Boolean = {
     assert(curator != null, "curator is null")
     if (exist(path)) {
-      val json = gson.toJson(data)
-      curator.setData().forPath(path, json.getBytes(StandardCharsets.UTF_8))
+      val configStr = config.root().render(ConfigRenderOptions.concise())
+      curator.setData().forPath(path, configStr.getBytes(StandardCharsets.UTF_8))
       true
     } else {
       false
-    }
-  }
-
-  /**
-   * 获取zk节点数据
-   * @param path
-   * @param ct
-   * @tparam T
-   * @return
-   */
-  def getData[T](path: String, ct: Type): Option[T] = {
-    assert(curator != null, "curator is null")
-    if (exist(path)) {
-      val data = new String(curator.getData().forPath(path))
-      Some(gson.fromJson(data, ct))
-    } else {
-      None
     }
   }
 

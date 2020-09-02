@@ -42,7 +42,7 @@ class LocalRunner extends Logging {
       .withSourceFactory(SCH_SOURCE_FACTORY, Sources.scheduler(EventBuilders.schedulerSourceEventBuilder()))
       .withSourceFactory("batchJsonKafka", Sources.kafka(EventBuilders.sourceEventBuilder()))
       .withSourceFactory("batchJsonDDMQ", new DDMQSourceFactory(DDMQSourceBuilder.builder()))
-      .withSourceFactory("jsonHttp", Sources.http(EventBuilders.jsonEventBuilder()))
+      .withSourceFactory("jsonHttp", Sources.http())
       .build()
     //启动主服务
     info("horoscope begin start service")

@@ -6,36 +6,40 @@
 
 package com.didichuxing.horoscope.source
 
-import java.util
-
-import com.didichuxing.horoscope.mock.ClusterRunner
-import com.didichuxing.horoscope.service.cluster.{FlowClient}
 import com.didichuxing.horoscope.util.Logging
-import com.typesafe.config.ConfigFactory
+import com.typesafe.config.{ConfigFactory, ConfigRenderOptions}
 import org.scalatest.{BeforeAndAfter, FunSuite, Ignore}
 
-@Ignore
 class SourceSuite extends FunSuite with BeforeAndAfter with Logging {
 
-  var client: FlowClient = _
-
-  before {
-    client = new ClusterRunner().run(ConfigFactory.load("application-remoting-2552.conf"))
-  }
-
-  after {
-    client.stopAllSources()
-  }
-
-  test("register source") {
-    client.removeSource("s1")
-    val params = new util.HashMap[String, Any]()
-    params.put("kafka.servers", "localhost:9092")
-    params.put("kafka.group", "horoscope")
-    params.put("kafka.max", "10")
-    params.put("kafka.topic", "eventSource")
-    params.put("grpc.port", "6880")
-    params.put("backpress", "100")
+  test("source config") {
+    val content = """{
+                    |      factory-name = "batchJsonKafka"
+                    |      source-name = "s1"
+                    |      flow-name = "/root/v2/flow1"
+                    |      parameter {
+                    |        kafka = {
+                    |          servers = "10.179.24.223:9093"
+                    |          cluster-id = 95
+                    |          app-id = "appId_001485"
+                    |          password = "_twYiKJNrBCX"
+                    |          topic = "event_source"
+                    |          group = "test0713"
+                    |          max = 6
+                    |          concurrency = 1
+                    |        }
+                    |        rpc {
+                    |          type = "thrift"
+                    |          port = 6880
+                    |        }
+                    |        backpress {
+                    |          permits = 10
+                    |          timeout = 60
+                    |        }
+                    |      }
+                    |    }""".stripMargin
+    val config = ConfigFactory.parseString(content)
+    println(config.root().render(ConfigRenderOptions.concise()))
   }
 
 }

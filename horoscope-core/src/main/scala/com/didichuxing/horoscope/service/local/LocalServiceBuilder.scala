@@ -15,6 +15,7 @@ import com.didichuxing.horoscope.service.exec.LocalExecutorEnvironment
 import com.didichuxing.horoscope.service.scheduler._
 import com.didichuxing.horoscope.runtime.expression.BuiltIn
 import com.didichuxing.horoscope.service.ApplicationContext
+import com.didichuxing.horoscope.service.api.HttpServer
 import com.didichuxing.horoscope.service.source._
 import com.didichuxing.horoscope.service.storage.{DefaultFlowStore, DefaultTraceStore}
 import com.didichuxing.horoscope.util.Logging
@@ -115,7 +116,7 @@ class LocalServiceBuilder extends ServiceBuilder with Logging {
     checkContext()
     ctx.withFlowExecutor(new FlowExecutorImpl(ctx.config, ctx.system, new LocalExecutorEnvironment))
     ctx.withScheduler(new MemoryScheduler)
-    ctx.withHttpSourceServer(new HttpSourceServer)
+    ctx.withHttpServer(new HttpServer)
     new FlowManager
   }
 

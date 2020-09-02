@@ -8,96 +8,27 @@ package com.didichuxing.horoscope.service.cluster
 
 import com.didichuxing.horoscope.core.Source
 import com.didichuxing.horoscope.service.ApplicationContext
-import com.didichuxing.horoscope.service.resource.Participant
 import com.didichuxing.horoscope.util.Logging
-import com.typesafe.config.ConfigRenderOptions
 import com.didichuxing.horoscope.service.source.EventBusFactory
+import com.didichuxing.horoscope.service.storage.SourceListener
 import com.typesafe.config.{Config, ConfigFactory}
 
 import scala.collection.mutable
-import scala.collection.mutable.ArrayBuffer
 import scala.collection.JavaConversions._
 import scala.util.Try
 
 /**
  * 集群版的数据源维护客户端，用于在线更新消息源
  */
-class FlowClient(implicit ctx: ApplicationContext) extends Logging {
+class FlowClient(implicit ctx: ApplicationContext) extends SourceListener with Logging {
 
   implicit val config = ctx.config
   implicit val sourceFactories = ctx.sourceFactories
   implicit val zkClient = ctx.zkClient
-  implicit val traceStore = ctx.traceStore
-  implicit val resourceManager = ctx.resourceManager
-  val httpSourceServer = ctx.httpSourceServer
-
-  val zkPath = config.getString("horoscope.zookeeper.sources.path")
+  val zkPath = zkClient.getSourcePath()
   val sources = mutable.Map[String, Source]()
-  val zkSourceEnabled = Try(config.getBoolean("horoscope.zk-source-enabled")).getOrElse(true)
 
   private def getSourcePath(name: String): String = s"${zkPath}/${name}"
-
-  /**
-   * Source config in format:
-   * {
-   *   factory-name = "batchJsonKafka" // required
-   *   source-name = "road_const"      // required
-   *   flow-name = "/traffic/intelligence/road-open-hourly" // required
-   *   parameter { // required
-   *     kafka = {
-   *       servers = "110.88.128.149:30372,10.85.128.81:30016"
-   *       cluster-id = 28
-   *       app-id = "appId_000328"
-   *       password = "3FDf0MrEKqVB"
-   *       topic = "traffic_mining_road_const"
-   *       group = "intelligence-gateway-dev"
-   *       max = 6
-   *       concurrency = 1
-   *      }
-   *      rpc {
-   *       port = 6880
-    *      type = "grpc"
-   *      }
-   *      backpress {
-   *         permits = 10
-   *         timeout = 60
-   *      }
-   *    }
-   * }
-   */
-  def registerSource(config: Config): Unit = {
-    val sourceName = config.getString("source-name")
-    val sourcePath = getSourcePath(sourceName)
-    if (zkClient.create(sourcePath)) {
-      if (zkClient.setData(sourcePath, config.root().render(ConfigRenderOptions.concise()))) {
-        info(("msg", "register source success"), ("sourceName", sourceName))
-      } else {
-        error(("msg", "register source set data error"), ("sourceName", sourceName))
-        throw new IllegalArgumentException(s"Can't register source ${sourceName}")
-      }
-    } else {
-      error(("msg", "register source create node error"), ("sourceName", sourceName))
-      throw new IllegalArgumentException(s"Can't register source ${sourceName}")
-    }
-
-  }
-
-  /**
-   * 移除一个数据源
-   *
-   * @param sourceName
-   */
-  def removeSource(sourceName: String): Unit = {
-    val sourcePath = getSourcePath(sourceName)
-    if (sources.contains(sourceName)) {
-      throw new IllegalAccessException(s"Can't remove running source ${sourceName}, stop it first")
-    }
-    if (zkClient.exist(sourcePath)) {
-      zkClient.delete(sourcePath)
-    } else {
-      throw new IllegalAccessException(s"${sourceName} not found")
-    }
-  }
 
   /**
    * 启动一个外部数据源
@@ -170,12 +101,6 @@ class FlowClient(implicit ctx: ApplicationContext) extends Logging {
    * 启动zk注册的所有数据源
    */
   def startAllSources(): Unit = {
-    //zk source
-    if (zkSourceEnabled && zkClient.exist(zkPath)) {
-      for (sourceName <- zkClient.getChild(zkPath)) {
-        startSource(sourceName)
-      }
-    }
     //config source
     try {
       info(("msg", "try to start config sources"))
@@ -183,7 +108,7 @@ class FlowClient(implicit ctx: ApplicationContext) extends Logging {
       sourceList.foreach(sourceConfig => {
         val factoryName = sourceConfig.getString("factory-name")
         val sourceName = sourceConfig.getString("source-name")
-        val flowName = sourceConfig.getString("flow-name")
+        val flowName = Try(sourceConfig.getString("flow-name")).getOrElse("dead_letter")
         if (!sources.contains(sourceName)) {
           startSource(factoryName, sourceConfig)(sourceName, flowName)
         }
@@ -194,7 +119,7 @@ class FlowClient(implicit ctx: ApplicationContext) extends Logging {
         warn(("msg", ex.getMessage))
     }
     //start http source server
-    httpSourceServer.start(sources, this)
+    ctx.httpServer.start(sources, this)
   }
 
 
@@ -223,41 +148,37 @@ class FlowClient(implicit ctx: ApplicationContext) extends Logging {
       stopSource(source._1)
     })
     //停止http source server
-    httpSourceServer.stop()
+    ctx.httpServer.stop()
   }
 
-  /**
-   * 当前所有注册的source
-   *
-   * @return
-   */
-  def listAllRegistered(): Seq[String] = {
-    val list = new ArrayBuffer[String]()
-    if (zkClient.exist(zkPath)) {
-      for (sourceName <- zkClient.getChild(zkPath)) {
-        val data = zkClient.getData(getSourcePath(sourceName))
-        if (data.isDefined) {
-          list += data.get
-        }
-      }
+  override def onRegister(source: Config): Unit = {
+    debug(s"on source add: $source")
+    val sourceName = source.getString("source-name")
+    val disabled = Try(source.getBoolean("parameter.disabled")).getOrElse(true)
+    if(!disabled) {
+      startSource(sourceName)
+    } else {
+      debug(s"source $sourceName disabled")
     }
-    list.toList
   }
 
-  def listAllRunning(): Seq[String] = {
-    sources.map(_._1).toSeq
+  override def onRemove(sourceName: String): Unit = {
+    debug(s"on source delete: $sourceName")
+    if(sources.get(sourceName).isDefined) {
+      stopSource(sourceName)
+    } else {
+      debug(s"source $sourceName not start")
+    }
   }
 
-  /**
-   * 返回当前集群中的所有参与者
-   *
-   * @return
-   */
-  def getParticipants(): Seq[Participant] = {
-    resourceManager.getParticipants()
-  }
-
-  def getLocal(): Participant = {
-    resourceManager.local()
+  override def onUpdate(sourceName: String, source: Config): Unit = {
+    debug(s"on source update: $source")
+    val disabled = Try(source.getBoolean("parameter.disabled")).getOrElse(true)
+    if(sources.get(sourceName).isDefined) {
+      stopSource(sourceName)
+    }
+    if(!disabled) {
+      startSource(sourceName)
+    }
   }
 }

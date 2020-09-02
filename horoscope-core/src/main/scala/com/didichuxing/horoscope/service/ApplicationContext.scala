@@ -11,9 +11,10 @@ import com.didichuxing.horoscope.core.{CompositorFactory, FlowStore, SourceFacto
 import com.didichuxing.horoscope.logging.ods.OdsLogger
 import com.didichuxing.horoscope.runtime.FlowExecutor
 import com.didichuxing.horoscope.runtime.expression.BuiltIn
+import com.didichuxing.horoscope.service.api.HttpServer
 import com.didichuxing.horoscope.service.resource.{ResourceManager, ZkClient}
 import com.didichuxing.horoscope.service.scheduler.{MultiScheduler, Scheduler, TimeTrigger}
-import com.didichuxing.horoscope.service.source.{HttpSourceServer, SourceExecutionContext}
+import com.didichuxing.horoscope.service.source.SourceExecutionContext
 import com.typesafe.config.Config
 
 import scala.collection.mutable
@@ -38,7 +39,7 @@ class ApplicationContext {
   private var fs: FlowStore = _
   private var rm: ResourceManager = _
   private var zkc: ZkClient = _
-  private var hss: HttpSourceServer = _
+  private var hss: HttpServer = _
   private var ods: OdsLogger = _
 
   def withResourceManager(resourceManager: ResourceManager): this.type = {
@@ -111,8 +112,8 @@ class ApplicationContext {
     this
   }
 
-  def withHttpSourceServer(httpSourceServer: HttpSourceServer): this.type = {
-    hss = httpSourceServer
+  def withHttpServer(httpServer: HttpServer): this.type = {
+    hss = httpServer
     this
   }
 
@@ -149,7 +150,7 @@ class ApplicationContext {
 
   def zkClient: ZkClient = zkc
 
-  def httpSourceServer: HttpSourceServer = hss
+  def httpServer: HttpServer = hss
 
   def odsLogger: OdsLogger = ods
 }

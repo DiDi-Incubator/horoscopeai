@@ -31,7 +31,6 @@ class FlowManager(implicit ctx: ApplicationContext) extends Logging {
   implicit val scheduler = ctx.scheduler
   implicit val timeTrigger = ctx.timeTrigger
   implicit val sec = ctx.sourceExecutionContext
-  val httpSourceServer = ctx.httpSourceServer
   val sources = mutable.Map[String, Source]()
 
   def startService(): Unit = {
@@ -82,7 +81,7 @@ class FlowManager(implicit ctx: ApplicationContext) extends Logging {
       startSource(factoryName, sourceConfig)(sourceName, flowName)
     })
     //start http source server
-    httpSourceServer.start(sources)
+    ctx.httpServer.start(sources)
   }
 
   /**
@@ -106,7 +105,7 @@ class FlowManager(implicit ctx: ApplicationContext) extends Logging {
    */
   def stopAllSources(): Unit = {
     //stop http source server
-    httpSourceServer.stop()
+    ctx.httpServer.stop()
     sources.foreach(source => {
       source._2.stop()
       info(("msg", s"${source._1} has stop"))

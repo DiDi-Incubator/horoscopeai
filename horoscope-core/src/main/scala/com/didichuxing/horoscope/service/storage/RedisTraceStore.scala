@@ -9,13 +9,16 @@ package com.didichuxing.horoscope.service.storage
 import java.nio.charset.Charset
 import java.util.concurrent.{LinkedBlockingQueue, ThreadPoolExecutor, TimeUnit}
 
+import akka.http.scaladsl.model.StatusCodes
+import akka.http.scaladsl.server.Directives.get
+import akka.http.scaladsl.server.Route
 import com.alibaba.ttl.threadpool.TtlExecutors
 import com.didichuxing.horoscope.core.FlowRuntimeMessage._
-import com.didichuxing.horoscope.core.{FlowRuntimeMessage}
+import com.didichuxing.horoscope.core.FlowRuntimeMessage
 import com.didichuxing.horoscope.service.source.NamedThreadFactory
 import com.didichuxing.horoscope.util.Constants.CONTEXT_VAL_FLAG
 import com.didichuxing.horoscope.util.Utils.{close, getSlot}
-import com.didichuxing.horoscope.util.{Logging, Utils}
+import com.didichuxing.horoscope.util.{Logging, SystemLog, Utils}
 import com.typesafe.config.Config
 import redis.clients.jedis._
 
@@ -24,6 +27,7 @@ import scala.collection.JavaConversions._
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.Try
+import com.google.protobuf.util.JsonFormat
 
 /**
  * mailbox:  {slot}:source:mb, map[eventId, event]
@@ -47,6 +51,7 @@ class RedisTraceStore(executionContext: ExecutionContext = null) extends Abstrac
   var pool: JedisPool = _
   var contextTTL: Int = _
   var slotCount = 0
+  var hashtag = false
 
   override def start(conf: Config): Unit = {
     super.start(conf)
@@ -64,6 +69,7 @@ class RedisTraceStore(executionContext: ExecutionContext = null) extends Abstrac
     pool = new JedisPool(poolConfig, host, port)
     contextTTL = Try(config.getInt("horoscope.redis.context-ttl")).getOrElse(604800)
     slotCount = Utils.getClusterSlotCount(config)
+    hashtag = Try(config.getBoolean("horoscope.redis.hashtag")).getOrElse(false)
   }
 
   override def stop(): Unit = {
@@ -144,7 +150,7 @@ class RedisTraceStore(executionContext: ExecutionContext = null) extends Abstrac
     } finally {
       close(jedis)
     }
-    instance
+    instance.build()
   }
 
   private def goto(source: String, instance: FlowInstance.Builder, pipeline: Pipeline): Unit = {
@@ -197,7 +203,7 @@ class RedisTraceStore(executionContext: ExecutionContext = null) extends Abstrac
       }).map {
         case (key, events) => {
           events.foreach(e => {
-            val timestamp = if (e.getScheduledTimestamp == null || e.getScheduledTimestamp == 0) {
+            val timestamp = if (!e.hasScheduledTimestamp || e.getScheduledTimestamp == 0) {
               System.currentTimeMillis()
             } else {
               e.getScheduledTimestamp
@@ -294,7 +300,7 @@ class RedisTraceStore(executionContext: ExecutionContext = null) extends Abstrac
   }
 
   override def commitSchedulerEvents(source: String, slot: Int, events: List[FlowEvent]): Long = {
-    if(events.size > 0) {
+    if (events.size > 0) {
       var jedis: Jedis = null
       try {
         jedis = pool.getResource
@@ -311,7 +317,139 @@ class RedisTraceStore(executionContext: ExecutionContext = null) extends Abstrac
   private def getContextKey(traceId: String): String = {
     val slot = getSlot(traceId, slotCount)
     val prefix = slot.formatted("%05d")
-    s"{$prefix}:$traceId"
+    if (hashtag) {
+      s"{$prefix}:$traceId"
+    } else {
+      s"$prefix:$traceId"
+    }
+  }
+
+  private def getSchedulerKey(source: String, slot: Int): String = {
+    val prefix = slot.formatted("%05d")
+    if (hashtag) {
+      s"{$prefix}:$source:sc"
+    } else {
+      s"$prefix:$source:sc"
+    }
+  }
+
+  private def getMailboxKey(source: String, slot: Int): String = {
+    val prefix = slot.formatted("%05d")
+    if (hashtag) {
+      s"{$prefix}:$source:mb"
+    } else {
+      s"$prefix:$source:mb"
+    }
+  }
+
+  //scalastyle:off
+  override def api(): Route = {
+    import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
+    import akka.http.scaladsl.server.Directives._
+    import spray.json._
+    import DefaultJsonProtocol._
+    pathPrefix("redis") {
+      concat(
+        get {
+          path("count" / Segment / Remaining) { (table, source) =>
+            SystemLog.create()
+            info(("msg", "total size"), ("table", table), ("source", source))
+            var jedis: Jedis = null
+            complete(
+              try {
+                var total = 0L
+                jedis = pool.getResource
+                for (slot <- 0 until slotCount) {
+                  table match {
+                    case "mb" =>
+                      val key = getMailboxKey(source, slot)
+                      total += jedis.hlen(key)
+                    case "sc" =>
+                      val key = getSchedulerKey(source, slot)
+                      total += jedis.zcount(key, 0, Long.MaxValue)
+                    case _ =>
+                  }
+                }
+                s"$total"
+              } finally {
+                close(jedis)
+              }
+            )
+          }
+        },
+        delete {
+          path("flush" / Segment / Remaining) { (table, source) =>
+            SystemLog.create()
+            info(("msg", "flush redis storage"), ("table", table), ("source", source))
+            var jedis: Jedis = null
+            complete(
+              try {
+                jedis = pool.getResource
+                val keys = ListBuffer[String]()
+                for (slot <- 0 until slotCount) {
+                  val key = table match {
+                    case "sc" =>
+                      getSchedulerKey(source, slot)
+                    case "mb" =>
+                      getMailboxKey(source, slot)
+                    case _ =>
+                      ""
+                  }
+                  if (!key.equals("")) {
+                    debug(("delete key", key))
+                    keys.append(key)
+                  }
+                }
+                jedis.del(keys: _*)
+                StatusCodes.OK
+              } finally {
+                close(jedis)
+              }
+            )
+          }
+        },
+        delete {
+          path("trace" / Remaining) { traceId =>
+            SystemLog.create()
+            info(("msg", "remove redis trace"), ("traceId", traceId))
+            var jedis: Jedis = null
+            complete(
+              try {
+                jedis = pool.getResource
+                val key = getContextKey(traceId)
+                debug(("delete key", key))
+                jedis.del(key)
+                StatusCodes.OK
+              } finally {
+                close(jedis)
+              }
+            )
+          }
+        },
+        get {
+          path("trace" / Remaining) { traceId =>
+            SystemLog.create()
+            info(("msg", "get redis trace"), ("traceId", traceId))
+            var jedis: Jedis = null
+            complete(
+              try {
+                jedis = pool.getResource
+                val context = getCurrentContext(traceId).map {
+                  case (key, value) =>
+                    (key, JsonFormat.printer().print(value.getValue).parseJson)
+                }
+                context.toMap.toJson
+              } finally {
+                close(jedis)
+              }
+            )
+          }
+        },
+        get {
+          complete(s"redis storage")
+        }
+      )
+    }
   }
 }
 
@@ -330,14 +468,4 @@ object RedisTraceStore {
       |""".stripMargin
 
   private def toBytes(s: String): Array[Byte] = s.getBytes(Charset.forName("UTF-8"))
-
-  private def getSchedulerKey(source: String, slot: Int): String = {
-    val prefix = slot.formatted("%05d")
-    s"{$prefix}:$source:sc"
-  }
-
-  private def getMailboxKey(source: String, slot: Int): String = {
-    val prefix = slot.formatted("%05d")
-    s"{$prefix}:$source:mb"
-  }
 }

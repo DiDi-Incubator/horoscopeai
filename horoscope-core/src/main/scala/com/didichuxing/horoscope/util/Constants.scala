@@ -58,4 +58,17 @@ object Constants {
    * 持续监控recovery每次批量获取的消息数量
    */
   val SCH_BATCH_SIZE = 2048
+
+  /**
+   * zk存储泛源配置路径
+   */
+  val ZK_SOURCE_PATH = "sources"
+  /**
+   * zk存储flow路径
+   */
+  val ZK_FLOW_PATH = "flows"
+  /**
+   * zk集群选主路径
+   */
+  val ZK_CLUSTER_PATH = "cluster"
 }

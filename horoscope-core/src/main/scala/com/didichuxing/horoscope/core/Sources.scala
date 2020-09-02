@@ -7,7 +7,7 @@
 package com.didichuxing.horoscope.core
 
 import com.didichuxing.horoscope.runtime.Value
-import com.didichuxing.horoscope.service.source._
+import com.didichuxing.horoscope.service.source.{HttpSourceFactory, _}
 import org.apache.kafka.clients.consumer.ConsumerRecord
 
 object Sources {
@@ -22,7 +22,7 @@ object Sources {
     new SchedulerSourceFactory(builder)
   }
 
-  def http[T](builder: EventBuilder[T, Value]): SourceFactory = {
-    new PushSourceFactory(builder)
+  def http(): SourceFactory = {
+    new HttpSourceFactory()
   }
 }

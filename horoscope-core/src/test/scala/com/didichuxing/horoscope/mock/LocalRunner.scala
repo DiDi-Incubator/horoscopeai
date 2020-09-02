@@ -27,8 +27,7 @@ class LocalRunner extends Logging {
       .withCompositorFactory("default", new MockCompositorFactory)
       .withSourceFactory("batchJsonKafka", Sources.kafka(EventBuilders.sourceEventBuilder()))
       .withSourceFactory(SCH_SOURCE_FACTORY, Sources.scheduler(EventBuilders.schedulerSourceEventBuilder()))
-      .withSourceFactory("jsonHttp", Sources.http(EventBuilders.jsonEventBuilder()))
-      .withSourceFactory("scheduleHttp", new HttpSourceFactory())
+      .withSourceFactory("httpSource", Sources.http())
       .build()
     //启动主服务
     info("horoscope begin start service")
@@ -48,9 +47,9 @@ class LocalRunner extends Logging {
 object LocalDemo extends App {
   val runner = new LocalRunner()
   runner.run(ConfigFactory.load("application-local.conf"))
-  HttpSourceClient.postEvent("http://localhost:5880/schedule/debug/_/now/v2/hello")
-  HttpSourceClient.postEvent("http://localhost:5880/schedule/debug/_/now/v2/hello")
-  HttpSourceClient.postEvent("http://localhost:5880/acheduleAsync/debug/_/now/v2/hello")
+  HttpSourceClient.postEvent("http://localhost:8062/api/schedule/debug/_/now/v2/hello")
+  HttpSourceClient.postEvent("http://localhost:8062/api/schedule/debug/_/now/v2/hello")
+  HttpSourceClient.postEvent("http://localhost:8062/api/acheduleAsync/debug/_/now/v2/hello")
   HttpSourceClient.stop()
   runner.stop
 }

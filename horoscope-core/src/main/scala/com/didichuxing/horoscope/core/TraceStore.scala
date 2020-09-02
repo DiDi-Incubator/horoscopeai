@@ -6,6 +6,7 @@
 
 package com.didichuxing.horoscope.core
 
+import akka.http.scaladsl.server.Route
 import com.didichuxing.horoscope.core.FlowRuntimeMessage._
 
 import scala.concurrent.Future
@@ -76,4 +77,6 @@ trait TraceStore {
    * Commit success process scheduler event
    */
   def commitSchedulerEvents(source: String, slot: Int, events: List[FlowEvent]): Long
+
+  def api: Route = _.reject()
 }

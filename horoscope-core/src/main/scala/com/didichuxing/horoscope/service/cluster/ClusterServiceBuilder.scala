@@ -7,11 +7,12 @@
 package com.didichuxing.horoscope.service.cluster
 
 import com.didichuxing.horoscope.runtime.FlowExecutorImpl
+import com.didichuxing.horoscope.service.api.HttpServer
 import com.didichuxing.horoscope.service.exec.ClusterExecutorEnvironment
 import com.didichuxing.horoscope.service.local.LocalServiceBuilder
 import com.didichuxing.horoscope.service.resource.{DefaultResourceManager, ZkClient}
 import com.didichuxing.horoscope.service.scheduler._
-import com.didichuxing.horoscope.service.source.{DefaultSourceExecutionContext, HttpSourceServer}
+import com.didichuxing.horoscope.service.source.DefaultSourceExecutionContext
 import com.didichuxing.horoscope.util.Utils._
 import com.didichuxing.horoscope.util.Logging
 import com.typesafe.config.{Config, ConfigFactory}
@@ -35,13 +36,20 @@ class ClusterServiceBuilder extends LocalServiceBuilder with Logging {
     this
   }
 
+  def withZkClient(zkClient: ZkClient): ClusterServiceBuilder.this.type = {
+    ctx.withZKClient(zkClient)
+    this
+  }
+
   def buildWorker(): FlowWorker = {
     checkContext()
-    ctx.withZKClient(new ZkClient)
+    if (ctx.zkClient == null) {
+      ctx.withZKClient(new ZkClient(ctx.config))
+    }
     ctx.withScheduler(new RocksDBScheduler)
     ctx.withResourceManager(new DefaultResourceManager)
     ctx.withFlowExecutor(new FlowExecutorImpl(ctx.config, ctx.system, new ClusterExecutorEnvironment))
-    ctx.withHttpSourceServer(new HttpSourceServer)
+    ctx.withHttpServer(new HttpServer)
     new FlowWorker
   }
 

@@ -6,7 +6,7 @@
 
 package com.didichuxing.horoscope.util
 
-import java.io.Closeable
+import java.io._
 import java.net.{Inet4Address, NetworkInterface}
 import java.util.UUID
 import java.util.zip.CRC32
@@ -220,4 +220,10 @@ object Utils extends Logging {
     Try(config.getString("horoscope.scheduler.store-col")).getOrElse("_SCD_")
   }
 
+  def printStackTraceStr(cause: Throwable): String = {
+    val sw: StringWriter = new StringWriter()
+    val pw: PrintWriter = new PrintWriter(sw)
+    cause.printStackTrace(pw)
+    sw.toString()
+  }
 }
