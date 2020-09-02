@@ -94,19 +94,15 @@ class FlowExecutorImpl(
               def call(): Map[String, TraceVariable] = Map.empty
             })
 
-            val worker = getFlowByName(event.getFlowName) match {
-              case Some(flow) =>
-                if (flow.isCompatible) {
-                  context.actorOf(
-                    Props(classOf[CompatibleInterpreter], flow, event, env, manager, traceContext), event.getEventId
-                  )
-                } else {
-                  context.actorOf(
-                    Props(classOf[FlowInterpreter], env, manager, event, traceContext), event.getEventId
-                  )
-                }
-              case None =>
-                throw IgnoredException(s"Can't find flow ${event.getFlowName}")
+            val flow = getFlowByName(event.getFlowName)
+            val worker = if (flow.isCompatible) {
+              context.actorOf(
+                Props(classOf[CompatibleInterpreter], flow, event, env, manager, traceContext), event.getEventId
+              )
+            } else {
+              context.actorOf(
+                Props(classOf[FlowInterpreter], env, manager, event, traceContext), event.getEventId
+              )
             }
 
             context.watchWith(

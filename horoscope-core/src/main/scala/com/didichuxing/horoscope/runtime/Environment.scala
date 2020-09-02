@@ -14,7 +14,7 @@ import scala.concurrent.Future
 trait Environment {
   def shouldAccept(traceId: String): Boolean = true
 
-  def getFlowByName(name: String): Option[Flow]
+  def getFlowByName(name: String): Flow
 
   def getTraceContext(trace: String, keys: Array[String]): Future[Map[String, TraceVariableOrBuilder]]
 }

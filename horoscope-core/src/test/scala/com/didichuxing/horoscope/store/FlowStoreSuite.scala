@@ -30,7 +30,7 @@ class FlowStoreSuite extends FunSuite with BeforeAndAfter with Logging {
 
   ignore("flow store") {
     val flowStore = new DefaultFlowStore
-    val flowDef = flowStore.getFlowByName("/traffic/road-close/original-intelligence").get
+    val flowDef = flowStore.getFlowByName("/traffic/road-close/original-intelligence")
     info(flowDef.toString)
 
     import com.didichuxing.horoscope.runtime.Implicits._

@@ -6,9 +6,6 @@
 
 package com.didichuxing.horoscope.service.exec
 
-import java.util.concurrent.ConcurrentHashMap
-import java.util.function.Function
-
 import com.didichuxing.horoscope.core.FlowDslMessage.CompositorDef
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.TraceVariableOrBuilder
 import com.didichuxing.horoscope.core._
@@ -17,16 +14,18 @@ import com.didichuxing.horoscope.runtime.expression.{BuiltIn, DefaultBuiltIn}
 import com.didichuxing.horoscope.service.ApplicationContext
 import com.didichuxing.horoscope.util.Logging
 
+import scala.collection.concurrent.TrieMap
 import scala.concurrent.Future
 import scala.language.implicitConversions
 
 class LocalExecutorEnvironment(implicit ctx: ApplicationContext) extends Environment with Logging {
-
-  implicit val flowStore = ctx.flowStore
-  implicit val traceStore = ctx.traceStore
-  implicit val compositorFactories = ctx.compositorFactories
-  implicit val builtIn = ctx.builtIn
-  private val flowCache = new ConcurrentHashMap[String, Flow]()
+  implicit val builtIn: BuiltIn = {
+    if (DefaultBuiltIn.defaultBuiltin != ctx.builtIn) {
+      DefaultBuiltIn.defaultBuiltin.toBuilder().mergeFrom(ctx.builtIn).build()
+    } else {
+      DefaultBuiltIn.defaultBuiltin
+    }
+  }
 
   implicit def buildCompositor(definition: CompositorDef): Compositor = {
     val factoryName = definition.getFactory
@@ -38,39 +37,32 @@ class LocalExecutorEnvironment(implicit ctx: ApplicationContext) extends Environ
     }
   }
 
-  implicit val builtInFun: BuiltIn = {
-    if (DefaultBuiltIn.defaultBuiltin != this.builtIn) {
-      DefaultBuiltIn.defaultBuiltin.toBuilder().mergeFrom(this.builtIn).build()
-    } else {
-      DefaultBuiltIn.defaultBuiltin
-    }
-  }
+  private val compositorFactories: Map[String, CompositorFactory] = ctx.compositorFactories
+  private val flowCache = TrieMap.empty[String, Flow]
 
-  override def getFlowByName(name: String): Option[Flow] = {
-    flowStore.getFlowByName(name) match {
-      case Some(flowDef) =>
-        try {
-          val flow = flowCache.computeIfAbsent(name, new Function[String, Flow]() {
-            override def apply(t: String): Flow = {
-              info(("msg", "create flow"), ("name", name))
-              Flow(flowDef)(buildCompositor _, builtInFun)
-            }
-          })
-          Option(flow)
-        } catch {
-          case ex: Throwable =>
-            ex.printStackTrace()
-            error(("msg", "create flow error"), ("name", name), ("ex", ex.getCause), ("detail", ex.toString))
-            None
-        }
-      case None =>
-        error(("msg", "flow not found"), ("name", name))
-        None
+  override def getFlowByName(name: String): Flow = {
+    import ctx.flowStore
+
+    try {
+      val flowDef = flowStore.getFlowByName(name)
+      val flow = flowCache.getOrElseUpdate(name, Flow(flowDef))
+      if (flow.id == flowDef.getId) {
+        flow
+      } else {
+        val newFlow = Flow(flowDef)
+        flowCache.update(name, newFlow)
+        newFlow
+      }
+    } catch {
+      case cause: Throwable =>
+        error(("msg", "create flow error"), ("name", name), ("ex", cause.getCause), ("detail", cause.toString))
+        flowCache.remove(name)
+        throw cause
     }
   }
 
   override def getTraceContext(trace: String, keys: Array[String]): Future[Map[String, TraceVariableOrBuilder]] = {
-    traceStore.getContext(trace, keys)
+    ctx.traceStore.getContext(trace, keys)
   }
 
   override def shouldAccept(traceId: String): Boolean = {

@@ -56,11 +56,7 @@ class MockFlowExecutor(implicit ctx: ApplicationContext) extends FlowExecutor wi
         info(("msg", "flow executor event"), ("eventId", event.getEventId), ("traceId", event.getTraceId))
         Thread.sleep(10)
         val flowName = event.getFlowName
-        val f = flowStore.getFlowByName(flowName)
-        if (f.isEmpty) {
-          throw new Exception(s"flow ${flowName} not found")
-        }
-        val flow = f.get
+        val flow = flowStore.getFlowByName(flowName)
         val statements = flow.getBody.getStatementList
         for (statement <- statements) {
           if (statement.hasCompositeStatement) {

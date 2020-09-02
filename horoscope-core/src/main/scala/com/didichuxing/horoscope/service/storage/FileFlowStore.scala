@@ -44,7 +44,7 @@ abstract class FileFlowStore extends FlowStore with Logging {
     m
   }
 
-  override def getFlowByName(name: String): Option[FlowDef] = {
-    flowList.get(name)
+  override def getFlowByName(name: String): FlowDef = {
+    flowList(name)
   }
 }

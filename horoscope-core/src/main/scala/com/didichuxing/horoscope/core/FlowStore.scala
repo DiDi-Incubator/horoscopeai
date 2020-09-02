@@ -6,8 +6,12 @@
 
 package com.didichuxing.horoscope.core
 
+import akka.http.scaladsl.server.Route
+import akka.http.scaladsl.server.directives._
 import com.didichuxing.horoscope.core.FlowDslMessage.FlowDef
 
 trait FlowStore {
-  def getFlowByName(name: String): Option[FlowDef]
+  def getFlowByName(name: String): FlowDef
+
+  def api: Route = _.reject()
 }

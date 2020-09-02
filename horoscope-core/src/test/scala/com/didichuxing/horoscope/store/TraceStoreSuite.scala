@@ -30,8 +30,8 @@ class TraceStoreSuite extends FunSuite with BeforeAndAfter with Logging {
   test("trace context") {
     val flowName = "/root/flow1"
     val flowStore = new DefaultFlowStore
-    val flow = flowStore.getFlowByName(flowName).get
-    val gotoFlow = flowStore.getFlowByName("/root/flow-goto-demo").get
+    val flow = flowStore.getFlowByName(flowName)
+    val gotoFlow = flowStore.getFlowByName("/root/flow-goto-demo")
     val source = "source1"
     val traceId = "trace1"
     val event = FlowEvent.newBuilder()

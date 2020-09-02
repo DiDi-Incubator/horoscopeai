@@ -73,10 +73,8 @@ class ExecutorSuite extends FunSuite
       compositor(definition.getFactory, definition.getContent)
     }
 
-    override def getFlowByName(name: String): Option[Flow] = {
-      {
-        flows.get(name)
-      } orElse {
+    override def getFlowByName(name: String): Flow = {
+      flows.getOrElseUpdate(name, {
         val flow = Try {
           val code = Resources.toString(
             Resources.getResource(s"infoflow$name.flow"), Charset.defaultCharset()
@@ -84,9 +82,8 @@ class ExecutorSuite extends FunSuite
           val flowDef = FlowCompiler.compile(code)
           Flow(flowDef)
         }
-        flow.foreach(flows += name -> _)
-        Some(flow.get)
-      }
+        flow.get
+      })
     }
 
     def getTraceContext(traceId: String, keys: Array[String]): Future[Map[String, TraceVariableOrBuilder]] = {
