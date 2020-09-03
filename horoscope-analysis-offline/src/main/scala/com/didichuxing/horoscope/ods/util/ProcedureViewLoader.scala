@@ -4,7 +4,6 @@
  */
 
 package com.didichuxing.horoscope.ods.util
-import org.apache.hadoop.fs.Path
 import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.storage.StorageLevel
 
@@ -19,38 +18,28 @@ class ProcedureViewLoader(
   import org.apache.spark.sql.functions._
   import sparkSession.implicits._
 
-  private def isExists(path: String): Boolean = {
-    val p = new Path(s"$path/_SUCCESS")
-    val fs = p.getFileSystem(sparkSession.sparkContext.hadoopConfiguration)
-    fs.exists(p)
-  }
-
   // scalastyle:off
   def run(year: String, month: String, day: String, hour: String): Unit = {
     val startTime = System.currentTimeMillis()
     val inputPath = s"${basePath}/${year}/${month}/${day}/${hour}"
     println(s"Starting to extract ${inputPath}")
-    if (isExists(inputPath)) {
-      val input = sparkSession.read.format("text").load(inputPath)
-      input.persist(StorageLevel.MEMORY_AND_DISK)
-      val inputCount = input.count()
-      println(s"Input count ${inputCount}")
-      val transformed = input.rdd.filter(_.getAs[String](0).length > 0)
-        .map { r => EtlUtil.decodeAsProcedureView(r.getAs[String](0))}
-      if (inputCount > 0) {
-        val output = sparkSession.createDataset(transformed)
-          .withColumn("year", lit(year))
-          .withColumn("month", lit(month))
-          .withColumn("day", lit(day))
-          .withColumn("hour", lit(hour))
-        output.printSchema()
-        output.write.insertInto(targetTable)
-        println(s"Output rows ${output.count()}, time taken ${System.currentTimeMillis() - startTime} ms")
-      } else {
-        println(s"Input ${inputPath} is empty")
-      }
+    val input = sparkSession.read.format("text").load(inputPath)
+    input.persist(StorageLevel.MEMORY_AND_DISK)
+    val inputCount = input.count()
+    println(s"Input count ${inputCount}")
+    val transformed = input.rdd.filter(_.getAs[String](0).length > 0)
+      .map { r => EtlUtil.decodeAsProcedureView(r.getAs[String](0))}
+    if (inputCount > 0) {
+      val output = sparkSession.createDataset(transformed)
+        .withColumn("year", lit(year))
+        .withColumn("month", lit(month))
+        .withColumn("day", lit(day))
+        .withColumn("hour", lit(hour))
+      output.printSchema()
+      output.write.mode("overwrite").insertInto(targetTable)
+      println(s"Output rows ${output.count()}, time taken ${System.currentTimeMillis() - startTime} ms")
     } else {
-      println(s"Input path ${inputPath} doesn't exist")
+      println(s"Input ${inputPath} is empty")
     }
   }
 }
