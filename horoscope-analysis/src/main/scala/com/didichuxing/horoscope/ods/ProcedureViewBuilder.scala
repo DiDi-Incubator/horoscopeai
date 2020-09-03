@@ -68,7 +68,7 @@ final class ProcedureViewBuilder {
     ProcedureView(
       fi.getEvent.getTraceId,
       buildId(),
-      fi.getEvent.getFlowName,
+      proc.getFlowName,
       if (proc.getStartTime > 0) proc.getStartTime else fi.getStartTime,
       if (proc.getEndTime > 0) proc.getEndTime else fi.getEndTime,
       proc.getChoiceList.asScala,
@@ -83,7 +83,7 @@ final class ProcedureViewBuilder {
     ProcedureView(
       fi.getEvent.getTraceId,
       buildId(),
-      fi.getEvent.getFlowName,
+      proc.getFlowName,
       if (proc.getStartTime > 0) proc.getStartTime else fi.getStartTime,
       if (proc.getEndTime > 0) proc.getEndTime else fi.getEndTime,
       choice = Seq.empty[String],
