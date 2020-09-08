@@ -7,7 +7,7 @@
 package com.didichuxing.horoscope.core
 
 import akka.actor.ActorSystem
-import com.didichuxing.horoscope.logging.ods.OdsLogger
+import com.didichuxing.horoscope.core.OdsLogger
 import com.didichuxing.horoscope.runtime.expression.BuiltIn
 import com.didichuxing.horoscope.service.scheduler.TimeTrigger
 import com.didichuxing.horoscope.service.source.SourceExecutionContext

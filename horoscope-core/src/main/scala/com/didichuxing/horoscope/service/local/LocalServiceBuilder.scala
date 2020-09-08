@@ -8,7 +8,8 @@ package com.didichuxing.horoscope.service.local
 
 import akka.actor.ActorSystem
 import com.didichuxing.horoscope.core._
-import com.didichuxing.horoscope.logging.ods.{OdsLogger, OdsLoggerFactory}
+import com.didichuxing.horoscope.core.OdsLogger
+import com.didichuxing.horoscope.logging.ods.OdsLoggerFactory
 import com.didichuxing.horoscope.runtime.FlowExecutorImpl
 import com.didichuxing.horoscope.runtime.expression.DefaultBuiltIn
 import com.didichuxing.horoscope.service.exec.LocalExecutorEnvironment

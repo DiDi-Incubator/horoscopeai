@@ -8,7 +8,7 @@ package com.didichuxing.horoscope.service
 
 import akka.actor.ActorSystem
 import com.didichuxing.horoscope.core.{CompositorFactory, FlowStore, SourceFactory, TraceStore}
-import com.didichuxing.horoscope.logging.ods.OdsLogger
+import com.didichuxing.horoscope.core.OdsLogger
 import com.didichuxing.horoscope.runtime.FlowExecutor
 import com.didichuxing.horoscope.runtime.expression.BuiltIn
 import com.didichuxing.horoscope.service.api.HttpServer

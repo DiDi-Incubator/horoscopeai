@@ -8,7 +8,7 @@ package com.didichuxing.horoscope.logging.ods.impl
 import java.util.{Properties, UUID}
 
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowInstance
-import com.didichuxing.horoscope.logging.ods.OdsLogger
+import com.didichuxing.horoscope.core.OdsLogger
 import com.didichuxing.horoscope.util.Logging
 import com.typesafe.config.Config
 import org.apache.kafka.clients.producer.{Callback, KafkaProducer, ProducerRecord, RecordMetadata}
@@ -27,7 +27,6 @@ class KafkaOdsLogger(config: Config) extends OdsLogger with LogHelper with Loggi
 
   override def log(flowInstance: FlowInstance): Unit = {
     try {
-      // TODO: when switch to v2, no need to simplify
       val transLog = Bytes.wrap(flowInstance.toByteArray)
       val record = new ProducerRecord[String, Bytes](topic, null,
         System.currentTimeMillis(),

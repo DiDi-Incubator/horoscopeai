@@ -5,6 +5,7 @@
 
 package com.didichuxing.horoscope.logging.ods
 
+import com.didichuxing.horoscope.core.OdsLogger
 import com.didichuxing.horoscope.logging.ods.impl.{CompositeOdsLogger, KafkaOdsLogger, LocalOdsLogger}
 import com.didichuxing.horoscope.util.PublicLog
 import com.typesafe.config.Config

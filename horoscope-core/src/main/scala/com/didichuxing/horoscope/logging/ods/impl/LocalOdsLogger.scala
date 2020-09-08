@@ -6,7 +6,7 @@
 package com.didichuxing.horoscope.logging.ods.impl
 
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowInstance
-import com.didichuxing.horoscope.logging.ods.OdsLogger
+import com.didichuxing.horoscope.core.OdsLogger
 import com.didichuxing.horoscope.util.PublicLog
 
 class LocalOdsLogger(publicLog: PublicLog) extends OdsLogger with LogHelper {
