@@ -6,7 +6,7 @@
 
 package com.didichuxing.horoscope.util
 
-import java.io.{Closeable, IOException}
+import java.io.Closeable
 import java.net.{Inet4Address, NetworkInterface}
 import java.util.UUID
 import java.util.zip.CRC32
@@ -15,9 +15,8 @@ import akka.actor.ActorSelection
 import akka.util.Timeout
 import akka.pattern.ask
 import com.didichuxing.horoscope.core.FlowRuntimeMessage
-import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowInstance.Assign
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.{FlowInstanceOrBuilder, FlowValue}
-import com.didichuxing.horoscope.runtime.{NULL, Value}
+import com.didichuxing.horoscope.runtime.Value
 import com.typesafe.config.Config
 import org.apache.hadoop.hbase.util.Bytes
 
@@ -113,9 +112,8 @@ object Utils extends Logging {
    * @return
    */
   def getEventId(): String = {
-    //    val random = ThreadLocalRandom.current
-    //    new UUID(random.nextInt, random.nextInt).toString.replace("-", "")
-    UUID.randomUUID().toString.replace("-", "")
+    //UUID.randomUUID().toString.replace("-", "")
+    ObjectID.next
   }
 
   /**
