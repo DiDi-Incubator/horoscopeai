@@ -192,12 +192,6 @@
             <artifactId>rocksdbjni</artifactId>
         </dependency>
 
-        <!--thrift-->
-        <dependency>
-            <groupId>org.apache.thrift</groupId>
-            <artifactId>libthrift</artifactId>
-        </dependency>
-
         <!--redis client-->
         <dependency>
             <groupId>redis.clients</groupId>
@@ -210,10 +204,6 @@
             <plugin>
                 <groupId>org.xolstice.maven.plugins</groupId>
                 <artifactId>protobuf-maven-plugin</artifactId>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.thrift</groupId>
-                <artifactId>thrift-maven-plugin</artifactId>
             </plugin>
             <plugin>
                 <groupId>org.antlr</groupId>

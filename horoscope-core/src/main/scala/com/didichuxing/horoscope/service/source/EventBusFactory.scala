@@ -22,8 +22,6 @@ object EventBusFactory {
     rpcType match {
       case "grpc" =>
         new GRPCEventBus(sourceName, flowName, params)
-      case "thrift" =>
-        new ThriftEventBus(sourceName, flowName, params)
       case _ =>
         new DefaultEventBus(sourceName, flowName, params)
     }
@@ -35,8 +33,6 @@ object EventBusFactory {
     rpcType match {
       case "grpc" =>
         new GRPCEventProcessorClient(participant, params)
-      case "thrift" =>
-        new ThriftEventProcessorClient(participant, params)
       case _ =>
         null
     }
