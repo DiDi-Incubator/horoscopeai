@@ -6,8 +6,13 @@
 
 package com.didichuxing.horoscope
 
+import akka.http.scaladsl.marshalling.{Marshaller, ToEntityMarshaller}
+import akka.http.scaladsl.model.{ContentType, HttpEntity, MediaTypes}
+import akka.http.scaladsl.unmarshalling.{FromStringUnmarshaller, Unmarshaller}
+import akka.http.scaladsl.util.FastFuture
 import com.didichuxing.horoscope.runtime.convert.DefaultGson
 import com.didichuxing.horoscope.runtime.expression.DefaultBuiltIn
+import com.google.gson.Gson
 
 import scala.language.implicitConversions
 
@@ -31,6 +36,19 @@ package object runtime {
     implicit def mkNumber(bigDecimal: BigDecimal): NumberValue = NumberValue(bigDecimal)
 
     implicit def mkBinary(bytes: Array[Byte]): Binary = Binary(bytes)
+
+    implicit def valueToEntityMarshaller(implicit gson: Gson): ToEntityMarshaller[Value] = {
+      import MediaTypes.`application/json`
+      Marshaller.withFixedContentType(ContentType(`application/json`)) { value ⇒
+        HttpEntity(`application/json`, value.toJson.getBytes)
+      }
+    }
+
+    implicit def valueFromStringUnmarshaller(implicit gson: Gson): FromStringUnmarshaller[Value] = {
+      Unmarshaller.withMaterializer[String, Value](_ ⇒ _ ⇒ { text ⇒
+        FastFuture.successful(gson.fromJson(text, classOf[Value]))
+      })
+    }
   }
 
   object Implicits
