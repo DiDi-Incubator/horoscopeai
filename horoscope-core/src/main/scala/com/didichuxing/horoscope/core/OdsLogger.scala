@@ -10,6 +10,5 @@ import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowInstance
 
 trait OdsLogger {
   def log(flowInstance: FlowInstance): Unit = throw new NotImplementedError()
-
   def api: Route = _.reject()
 }

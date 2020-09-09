@@ -8,7 +8,6 @@ package com.didichuxing.horoscope.logging
 import java.util.UUID
 
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.{FlowEvent, FlowInstance}
-import com.didichuxing.horoscope.logging.ods.OdsLoggerFactory
 import com.typesafe.config.ConfigFactory
 import org.scalatest.FunSuite
 
