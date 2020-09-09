@@ -10,10 +10,12 @@ import java.nio.file.{FileVisitOption, Files, Path}
 import java.util.concurrent.{Executors, Semaphore}
 import java.util.function.Consumer
 
+import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.server.Route
 import com.didichuxing.horoscope.core.FlowDslMessage.FlowDef
 import com.didichuxing.horoscope.core.FlowStore
 import com.didichuxing.horoscope.dsl.FlowCompiler
+import com.didichuxing.horoscope.runtime.Value
 import com.didichuxing.horoscope.util.Logging
 import org.apache.curator.framework.CuratorFramework
 import org.apache.curator.framework.recipes.cache.{TreeCache, TreeCacheEvent, TreeCacheListener}
@@ -22,6 +24,10 @@ import scala.concurrent.ExecutionContext
 import scala.util.Try
 
 class ZookeeperFlowStore(curator: CuratorFramework) extends FlowStore with TreeCacheListener with Logging {
+  import ZookeeperFlowStore._
+
+  import scala.collection.JavaConversions._
+
   private val executor = Executors.newSingleThreadExecutor()
 
   implicit def executionContext: ExecutionContext = ExecutionContext.fromExecutor(executor)
@@ -93,52 +99,33 @@ class ZookeeperFlowStore(curator: CuratorFramework) extends FlowStore with TreeC
   override def getFlowByName(name: String): FlowDef = flows(name)
 
   override def api: Route = {
-    import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
-    import akka.http.scaladsl.model._
     import akka.http.scaladsl.server.Directives._
-    import spray.json._
-    import DefaultJsonProtocol._
+    import com.didichuxing.horoscope.runtime.Implicits._
 
-    import scala.collection.JavaConversions._
-
-    path("tree" / Remaining) { remaining =>
-      val suffix = "/" + remaining
-
-      if (suffix.endsWith("/")) {
+    path("tree" ~ Remaining) { remaining =>
+      if (remaining.isEmpty) {
+        complete(Value(walk()))
+      } else if (remaining.endsWith("/")) {
         // dir operations
-        val path = if (suffix.length <= 1) suffix else suffix.substring(0, suffix.length - 1)
-        get {
-          val children = tree.getCurrentChildren(path).toList.flatMap({ case (key, value) =>
-            val fullPath = suffix + key
-            var items: List[String] = Nil
-
-            if (tree.getCurrentChildren(fullPath) != null && tree.getCurrentChildren(fullPath).nonEmpty) {
-              items ::= fullPath + "/"
-            }
-            if (value.getData != null && value.getData.nonEmpty) {
-              items ::= fullPath
-            }
-            items
-          })
-          complete(children.toJson)
-        }
+        val path = if (remaining == "/") remaining else remaining.init
+        complete(Value(listChildren(path)))
       } else {
         // flow operations
         concat(
           get {
-            complete(new String(tree.getCurrentData(suffix).getData))
+            complete(new String(tree.getCurrentData(remaining).getData))
           },
           put {
             entity(as[String]) { value =>
               complete(Try {
-                update(value, Some(suffix))
+                update(value, Some(remaining))
                 StatusCodes.OK
               })
             }
           },
           delete {
             complete(Try {
-              curator.delete().deletingChildrenIfNeeded().forPath("/tree" + suffix)
+              curator.delete().deletingChildrenIfNeeded().forPath("/tree" + remaining)
               StatusCodes.OK
             })
           }
@@ -146,4 +133,39 @@ class ZookeeperFlowStore(curator: CuratorFramework) extends FlowStore with TreeC
       }
     }
   }
+
+  def walk(segments: Seq[String] = Nil): Node = {
+    val path = segments.mkString("/", "/", "")
+    val data = tree.getCurrentData(path)
+    val flowName: String = if (data != null && data.getData != null && data.getData.nonEmpty) {
+      path
+    } else {
+      null
+    }
+
+    val children = tree.getCurrentChildren(path).keysIterator.map(
+      child => walk(segments :+ child)
+    ).toArray
+
+    Node(segments.lastOption.getOrElse("/"), flowName, children)
+  }
+
+  def listChildren(path: String): Seq[String] = {
+    tree.getCurrentChildren(path).toList.flatMap({ case (key, value) =>
+      val fullPath = if (path == "/") s"/$key" else s"$path/$key"
+      var items: List[String] = Nil
+
+      if (tree.getCurrentChildren(fullPath) != null && tree.getCurrentChildren(fullPath).nonEmpty) {
+        items ::= fullPath + "/"
+      }
+      if (value.getData != null && value.getData.nonEmpty) {
+        items ::= fullPath
+      }
+      items
+    })
+  }
+}
+
+object ZookeeperFlowStore {
+  case class Node(name: String, flow: String, children: Seq[Node])
 }

@@ -6,6 +6,7 @@
 
 package com.didichuxing.horoscope.runtime.expression
 
+import akka.http.scaladsl.server.Route
 import com.didichuxing.horoscope.runtime._
 
 import scala.languageFeature.implicitConversions
@@ -17,6 +18,20 @@ class BuiltIn(
 ) {
   import BuiltIn._
   def toBuilder(): BuiltIn.Builder = new Builder().mergeFrom(this)
+
+  def api: Route = {
+    import akka.http.scaladsl.server.Directives._
+    import Implicits._
+
+    concat(
+      path("evaluate") {
+        parameters("expression", "context".as[Value]) { (expression, context) =>
+          val result = Expression(expression)(this).apply(context.as[ValueDict])
+          complete(result)
+        }
+      }
+    )
+  }
 }
 
 object BuiltIn {

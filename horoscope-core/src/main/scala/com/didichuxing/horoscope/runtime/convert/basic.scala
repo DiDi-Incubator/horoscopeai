@@ -37,19 +37,19 @@ trait BasicConvertible {
 
   implicit def fromFractional[F: Fractional]: From.Aux[F, NumberValue] = newFrom(f => NumberValue(f.toDouble()))
 
+  implicit def fromScalaOption[T](
+    converter: Lazy[From[T]]
+  ): From.Aux[Option[T], Value] = newFrom {
+    case None => NULL
+    case Some(item) => lazily(converter)(item)
+  }
+
   implicit def fromScalaIterable[CC[_], T](
     implicit
     conv: CC[T] => Iterable[T],
     converter: Lazy[From[T]]
   ): From.Aux[CC[T], ValueList] = newFrom { iterable =>
     new SimpleList(iterable.view.map(lazily(converter)(_)).toSeq)
-  }
-
-  implicit def fromScalaOption[T](
-    converter: Lazy[From[T]]
-  ): From.Aux[Option[T], Value] = newFrom {
-    case None => NULL
-    case Some(item) => lazily(converter)(item)
   }
 
   implicit def fromScalaMap[CC, T](

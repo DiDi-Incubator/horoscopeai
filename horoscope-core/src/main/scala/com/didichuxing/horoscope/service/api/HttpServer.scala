@@ -59,6 +59,9 @@ class HttpServer(implicit ctx: ApplicationContext) extends Logging {
           pathPrefix("flow") {
             ctx.flowStore.api
           },
+          pathPrefix("expression") {
+            ctx.builtIn.api
+          },
           pathPrefix("sources") {
             sourceStore.api
           },
