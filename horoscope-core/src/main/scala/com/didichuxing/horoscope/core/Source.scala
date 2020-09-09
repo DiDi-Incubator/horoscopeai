@@ -12,6 +12,8 @@ trait Source {
   def start(eventBus: EventBus): Unit
 
   def stop(): Unit
+
+  def eventBus(): EventBus
 }
 
 trait SourceFactory extends Serializable {
