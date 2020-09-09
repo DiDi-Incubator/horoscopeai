@@ -3,7 +3,7 @@
  * Authors: liangguorong@didiglobal.com
  */
 
-package com.didichuxing.horoscope.logging.ods.impl
+package com.didichuxing.horoscope.logging
 
 import java.util.{Properties, UUID}
 

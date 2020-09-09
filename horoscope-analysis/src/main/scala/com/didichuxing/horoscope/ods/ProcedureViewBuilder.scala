@@ -90,7 +90,9 @@ final class ProcedureViewBuilder {
       argument = Map.empty[String, String],
       buildResult(),
       composite = Map.empty[String, Composite],
-      fault = Map.empty[String, Fault]
+      fault = proc.getFaultMap.asScala.mapValues { f =>
+        Fault(f.getCatalog, f.getMessage, "")
+      }.toMap
     )
   }
 

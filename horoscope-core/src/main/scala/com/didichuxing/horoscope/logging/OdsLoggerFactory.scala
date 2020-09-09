@@ -3,10 +3,9 @@
  * Authors: liangguorong@didiglobal.com
  */
 
-package com.didichuxing.horoscope.logging.ods
+package com.didichuxing.horoscope.logging
 
 import com.didichuxing.horoscope.core.OdsLogger
-import com.didichuxing.horoscope.logging.ods.impl.{CompositeOdsLogger, KafkaOdsLogger, LocalOdsLogger}
 import com.didichuxing.horoscope.util.PublicLog
 import com.typesafe.config.Config
 

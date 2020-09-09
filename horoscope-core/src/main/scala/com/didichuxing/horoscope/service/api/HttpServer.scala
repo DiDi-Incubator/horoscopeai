@@ -71,7 +71,7 @@ class HttpServer(implicit ctx: ApplicationContext) extends Logging {
           pathPrefix("storage") {
             ctx.traceStore.api
           },
-          pathPrefix("log") {
+          pathPrefix("logs") {
             ctx.odsLogger.api
           }
         )
