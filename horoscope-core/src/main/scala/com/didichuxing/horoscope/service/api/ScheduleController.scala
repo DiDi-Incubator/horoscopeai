@@ -1,5 +1,7 @@
 package com.didichuxing.horoscope.service.api
 
+import akka.http.scaladsl.model.MediaTypes
+import akka.http.scaladsl.server.Directives.entity
 import akka.http.scaladsl.server.Route
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.{FlowEvent, FlowValue, TraceVariable}
 import com.didichuxing.horoscope.core.{Source, SyncEventBus}
@@ -12,6 +14,7 @@ import com.didichuxing.horoscope.util.Utils.{getEventId, getTraceId}
 
 import scala.collection.mutable
 import scala.concurrent.{ExecutionContextExecutorService, Future, Promise}
+import scala.util.Try
 
 class ScheduleController(sources: mutable.Map[String, Source])
                         (implicit ec: ExecutionContextExecutorService) extends Logging {
@@ -23,16 +26,31 @@ class ScheduleController(sources: mutable.Map[String, Source])
     concat(
       post {
         path(Segment / Segment / Segment / Remaining) { (source, trace, time, flowName) =>
-          entity(as[String]) { json =>
-            SystemLog.create()
-            debug(("msg", "http source sync"), ("flowName", flowName), ("body", json))
-            onComplete(doScheduleSync(source, trace, flowName, json)) {
-              result =>
-                complete(
-                  gson.toJson(result.get).parseJson
-                )
+          SystemLog.create()
+          extractRequestEntity { body =>
+            if (body.getContentType().mediaType == MediaTypes.`application/x-www-form-urlencoded`) {
+              parameterMap { params =>
+                debug(("msg", "http source sync"), ("flowName", flowName), ("params", params))
+                onComplete(doScheduleSync(source, trace, flowName, params)) {
+                  result =>
+                    complete(
+                      gson.toJson(result.get).parseJson
+                    )
+                }
+              }
+            } else {
+              entity(as[String]) { json =>
+                debug(("msg", "http source sync"), ("flowName", flowName), ("body", json))
+                onComplete(doScheduleSync(source, trace, flowName, json)) {
+                  result =>
+                    complete(
+                      gson.toJson(result.get).parseJson
+                    )
+                }
+              }
             }
           }
+
         }
       },
       post {
@@ -146,8 +164,9 @@ class ScheduleController(sources: mutable.Map[String, Source])
         builder.putArgument("@", TraceVariable.newBuilder().setValue(value.as[FlowValue]).build()).build()
       case params: Map[String, String] =>
         params.foreach {
-          case (key, value) =>
-            builder.putArgument(s"@$key", TraceVariable.newBuilder().setValue(Value(value).as[FlowValue]).build())
+          case (key, json) =>
+            val value = Try(gson.fromJson(json, classOf[Value])).getOrElse(Value(json))
+            builder.putArgument(s"@$key", TraceVariable.newBuilder().setValue(value.as[FlowValue]).build())
         }
         builder.build()
       case _ =>

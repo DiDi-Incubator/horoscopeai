@@ -14,7 +14,7 @@ import com.didichuxing.horoscope.runtime.{IgnoredException, Value}
 import com.didichuxing.horoscope.service.ApplicationContext
 import com.didichuxing.horoscope.service.source.EventProcessErrorCode._
 import com.didichuxing.horoscope.util.Utils._
-import com.didichuxing.horoscope.util.{Logging, PublicLog, Utils}
+import com.didichuxing.horoscope.util.Logging
 import com.google.gson.{Gson, GsonBuilder}
 import com.google.protobuf.util.JsonFormat
 import com.typesafe.config.Config
@@ -43,7 +43,7 @@ class DefaultEventProcessor(sourceName: String, params: Config)
   //retry  eventId:retryCount
   val retryFlowEvents = new ConcurrentHashMap[String, Integer]()
   //最大重试次数
-  val maxRetryCount = configIntOrDefault(params, "exec.retry", 10)
+  val maxRetryCount = configIntOrDefault(params, "exec.retry", 1)
 
   override def start(): Unit = {
     backPress = new Semaphore(Try(params.getInt("backpress.permits")).getOrElse(100), true)
@@ -155,31 +155,23 @@ class DefaultEventProcessor(sourceName: String, params: Config)
     exception match {
       case ex: IgnoredException =>
         // just ignore and commit
-        warn(("msg", "executor event with ignored exception"), ("ex", ex.toString),
+        warn(("msg", "executor event with ignored exception"), ("ex", printStackTraceStr(ex)),
           ("event", Value(flowEvent).toJson))
-        ex.printStackTrace()
-        val instance = FlowInstance.newBuilder().setFlowId("unknown").setEvent(flowEvent)
-        val fib = storeService.commitEvent(sourceName, instance)
-        if (fib == null) {
-          error(("msg", "commit event error"), ("instance", Value(instance).toJson))
-        }
-        backPress.release()
+        ignoreFailEvent(flowEvent)
 
       case err: ExecutionException if err.getCause.isInstanceOf[Error] =>
         //Error异常不重试，如：不属于该分区
-        error(("msg", "executor event error"), ("ex", err.toString),
+        error(("msg", "executor event error"), ("ex", printStackTraceStr(err)),
           ("event", Value(flowEvent).toJson))
-        err.printStackTrace()
         backPress.release()
 
       case ex: Throwable =>
-        error(("msg", "executor event error"), ("ex", ex.toString), ("event", Value(flowEvent).toJson))
-        ex.printStackTrace()
+        error(("msg", "executor event error"), ("ex", printStackTraceStr(ex)), ("event", Value(flowEvent).toJson))
         val retryCount = retryFlowEvents.getOrDefault(flowEvent.getEventId, 1)
         if (retryCount >= maxRetryCount) {
           //反复尝试后依旧无法正常执行的flowEvent，会留在mailbox中
           error(("msg", "maximum retry limit is reached"), ("event", Value(flowEvent).toJson))
-          backPress.release()
+          ignoreFailEvent(flowEvent)
         } else {
           //重试等待100ms ~ 1000ms
           Thread.sleep(retryCount * 100)
@@ -191,6 +183,15 @@ class DefaultEventProcessor(sourceName: String, params: Config)
             ("eventId", flowEvent.getEventId))
         }
     }
+  }
+
+  private def ignoreFailEvent(flowEvent: FlowEvent): Unit = {
+    val instance = FlowInstance.newBuilder().setFlowId("unknown").setEvent(flowEvent)
+    val fib = storeService.commitEvent(sourceName, instance)
+    if (fib == null) {
+      error(("msg", "commit event error"), ("instance", Value(instance).toJson))
+    }
+    backPress.release()
   }
 
   override def putEventSync(flowEvent: FlowEvent): FlowInstance = {
