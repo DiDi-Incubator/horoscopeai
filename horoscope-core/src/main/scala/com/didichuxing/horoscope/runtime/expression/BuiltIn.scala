@@ -25,9 +25,10 @@ class BuiltIn(
 
     concat(
       path("evaluate") {
-        parameters("expression", "context".as[Value]) { (expression, context) =>
-          val result = Expression(expression)(this).apply(context.as[ValueDict])
-          complete(result)
+        (parameters("expression", "context".as[Value]) |
+          formFields("expression", "context".as[Value])) { (expression, context) =>
+            val result = Expression(expression)(this).apply(context.as[ValueDict])
+            complete(result)
         }
       }
     )

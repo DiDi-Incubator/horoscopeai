@@ -29,7 +29,7 @@ class ScheduleController(sources: mutable.Map[String, Source])
           SystemLog.create()
           extractRequestEntity { body =>
             if (body.getContentType().mediaType == MediaTypes.`application/x-www-form-urlencoded`) {
-              parameterMap { params =>
+              formFieldMap { params =>
                 debug(("msg", "http source sync"), ("flowName", flowName), ("params", params))
                 onComplete(doScheduleSync(source, trace, flowName, params)) {
                   result =>
