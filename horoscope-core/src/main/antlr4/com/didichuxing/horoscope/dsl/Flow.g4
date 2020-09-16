@@ -33,12 +33,16 @@ block
     ;
 
 statement
-    : variable ('<-' | isLazy='<~') evaluate # Assign
-    | (variable ('<-' | isLazy='<~'))? UCAMEL LPAREN compositeArgumentList RPAREN # Composite
-    | (variable ('<-' | isLazy='<~'))? LBRACK UCAMEL LPAREN ('_' | compositeArgumentList) RPAREN '<-' expression RBRACK # BatchComposite
+    : naming evaluate # Assign
+    | (naming)? UCAMEL LPAREN compositeArgumentList RPAREN # Composite
+    | (naming)? LBRACK UCAMEL LPAREN ('_' | compositeArgumentList) RPAREN '<-' expression RBRACK # BatchComposite
     | '<>' '{' (choice NL| NL)+ '}' # Branch
     | '<' SNAKE '>' '+' STRING? '=>' URI flowArgumentList ('#' trace=evaluate)? # Schedule
     | '<' SNAKE '>' '=>' URI flowArgumentList # Include
+    ;
+
+naming
+    : variable ('<-' | isLazy='<~' | isTransient='<~~')
     ;
 
 compositeArgumentList

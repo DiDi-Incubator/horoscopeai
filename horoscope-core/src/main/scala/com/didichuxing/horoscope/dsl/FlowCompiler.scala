@@ -73,22 +73,28 @@ class FlowCompiler extends FlowBaseListener with Logging {
 
   override def enterAssign(ctx: FlowParser.AssignContext): Unit = newStatement(ctx) { statement =>
     val assign = statement.getAssignStatementBuilder
-
-    assign.setReference(ctx.variable().getText)
+    val naming = ctx.naming()
+    assign.setReference(naming.variable().getText)
     assign.setEvaluate(parseEvaluate(ctx.evaluate))
-    if (ctx.isLazy != null) {
+    if (naming.isLazy != null) {
       assign.setIsLazy(true)
+    }
+    if (naming.isTransient != null) {
+      assign.setIsTransient(true)
     }
   }
 
   override def enterComposite(ctx: FlowParser.CompositeContext): Unit = newStatement(ctx) { statement =>
     val composite = statement.getCompositeStatementBuilder
     composite.setCompositor(ctx.UCAMEL().getText)
-
-    if (ctx.variable() != null) {
-      composite.setReference(ctx.variable().getText)
-      if (ctx.isLazy != null) {
+    val naming = ctx.naming()
+    if (naming.variable() != null) {
+      composite.setReference(naming.variable().getText)
+      if (naming.isLazy != null) {
         composite.setIsLazy(true)
+      }
+      if (naming.isTransient != null) {
+        composite.setIsTransient(true)
       }
     } else {
       composite.setReference(
@@ -113,11 +119,14 @@ class FlowCompiler extends FlowBaseListener with Logging {
     val composite = statement.getCompositeStatementBuilder
     composite.setCompositor(ctx.UCAMEL().getText)
     composite.setIsBatch(true)
-
-    if (ctx.variable() != null) {
-      composite.setReference(ctx.variable().getText)
-      if (ctx.isLazy != null) {
+    val naming = ctx.naming()
+    if (naming.variable() != null) {
+      composite.setReference(naming.variable().getText)
+      if (naming.isLazy != null) {
         composite.setIsLazy(true)
+      }
+      if (naming.isTransient != null) {
+        composite.setIsTransient(true)
       }
     } else {
       composite.setReference(

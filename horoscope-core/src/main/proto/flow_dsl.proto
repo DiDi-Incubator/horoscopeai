@@ -50,6 +50,7 @@ message AssignStatement {
     required string reference = 1;
     optional bool is_lazy = 2 [default = false];
     required EvaluateDef evaluate = 3;
+    optional bool is_transient = 4 [default = false];
 }
 
 message CompositeStatement {
@@ -58,6 +59,7 @@ message CompositeStatement {
     optional bool is_batch = 3 [default = false];
     optional string compositor = 4;
     required ExprDef argument = 5;
+    optional bool is_transient = 6 [default = false];
 }
 
 message ScheduleStatement {
