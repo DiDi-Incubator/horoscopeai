@@ -148,15 +148,15 @@ class GRPCEventProcessor(sourceName: String, params: Config)(implicit ctx: Appli
         responseHeader.setErrno(ERRNO.OK)
         response.setInstance(instance)
       } catch {
-        case EventProcessException(EventProcessErrorCode.TimeOutError) =>
+        case EventProcessException(EventProcessErrorCode.TimeOutError, _) =>
           responseHeader.setErrno(ERRNO.TIMEOUT)
-        case EventProcessException(EventProcessErrorCode.BackPressError) =>
+        case EventProcessException(EventProcessErrorCode.BackPressError, _) =>
           responseHeader.setErrno(ERRNO.BACKPRESS)
-        case EventProcessException(EventProcessErrorCode.CheckError) =>
+        case EventProcessException(EventProcessErrorCode.CheckError, _) =>
           responseHeader.setErrno(ERRNO.CHECK)
-        case EventProcessException(EventProcessErrorCode.ExecuteError) =>
+        case EventProcessException(EventProcessErrorCode.ExecuteError, _) =>
           responseHeader.setErrno(ERRNO.EXECUTE)
-        case EventProcessException(EventProcessErrorCode.CommitError) =>
+        case EventProcessException(EventProcessErrorCode.CommitError, _) =>
           responseHeader.setErrno(ERRNO.COMMIT)
         case _ =>
           responseHeader.setErrno(ERRNO.UNKNOWN)

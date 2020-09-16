@@ -14,7 +14,7 @@ import com.didichuxing.horoscope.runtime.{IgnoredException, Value}
 import com.didichuxing.horoscope.service.ApplicationContext
 import com.didichuxing.horoscope.service.source.EventProcessErrorCode._
 import com.didichuxing.horoscope.util.Utils._
-import com.didichuxing.horoscope.util.Logging
+import com.didichuxing.horoscope.util.{Logging, Utils}
 import com.google.gson.{Gson, GsonBuilder}
 import com.google.protobuf.util.JsonFormat
 import com.typesafe.config.Config
@@ -237,15 +237,13 @@ class DefaultEventProcessor(sourceName: String, params: Config)
         }
       } catch {
         case ex: TimeoutException =>
-          ex.printStackTrace()
-          error(("msg", "time out"), ("ex", ex.getCause))
+          error(("msg", "time out"), ("ex", printStackTraceStr(ex)))
           backPress.release()
-          throw EventProcessException(TimeOutError)
+          throw EventProcessException(TimeOutError, ex)
         case ex: Throwable =>
-          ex.printStackTrace()
-          error(("msg", "executor error"), ("ex", ex.getCause))
+          error(("msg", "executor error"), ("ex", printStackTraceStr(ex)))
           backPress.release()
-          throw EventProcessException(ExecuteError)
+          throw EventProcessException(ExecuteError, ex)
       }
     } else {
       //back press error

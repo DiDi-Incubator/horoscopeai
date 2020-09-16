@@ -1,7 +1,6 @@
 package com.didichuxing.horoscope.service.api
 
 import akka.http.scaladsl.model.MediaTypes
-import akka.http.scaladsl.server.Directives.entity
 import akka.http.scaladsl.server.Route
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.{FlowEvent, FlowValue, TraceVariable}
 import com.didichuxing.horoscope.core.{Source, SyncEventBus}

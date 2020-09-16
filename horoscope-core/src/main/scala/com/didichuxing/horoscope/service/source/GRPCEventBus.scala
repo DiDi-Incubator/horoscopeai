@@ -118,7 +118,7 @@ class GRPCEventBus(sourceName: String, flowName: String, params: Config)
       } catch {
         case ex: Exception =>
           error(("msg", "syncRpcEvents error"), ("ex", ex.getCause))
-          throw EventProcessException(EventProcessErrorCode.RpcClientError)
+          throw EventProcessException(EventProcessErrorCode.RpcClientError, ex)
       }
     } else {
       throw EventProcessException(EventProcessErrorCode.RpcClientError)

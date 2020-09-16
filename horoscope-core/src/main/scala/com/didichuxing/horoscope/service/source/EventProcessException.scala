@@ -8,6 +8,8 @@ package com.didichuxing.horoscope.service.source
 
 import com.didichuxing.horoscope.service.source.EventProcessErrorCode.ErrorCode
 
+case class EventProcessException(code: ErrorCode, cause: Throwable = null) extends Exception(code.toString, cause)
+
 object EventProcessErrorCode extends Enumeration {
   type ErrorCode = Value
   val Success = Value(0, "success")
@@ -26,4 +28,3 @@ object EventProcessErrorCode extends Enumeration {
   val UnknownError = Value(999, "unknown_error")
 }
 
-case class EventProcessException(code: ErrorCode) extends Exception
