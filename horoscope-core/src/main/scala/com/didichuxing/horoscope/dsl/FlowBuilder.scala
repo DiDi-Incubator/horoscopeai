@@ -22,6 +22,7 @@ class FlowBuilder(flowDef: FlowDef)(
   buildCompositor: CompositorDef => Compositor,
   builtin: BuiltIn
 ) extends Flow.Builder {
+
   import Flow._
   import com.didichuxing.horoscope.core.FlowDslMessage
   import com.didichuxing.horoscope.runtime.expression.Reference
@@ -64,12 +65,16 @@ class FlowBuilder(flowDef: FlowDef)(
 
   sealed trait Symbol {
     def name: String
+
     def builders: Seq[NodeBuilder]
+
     def isLazy: Boolean
+
+    def isTransient: Boolean
   }
 
   case class VariableSymbol(
-    name: String, variable: GenericNodeBuilder[Variable], isLazy: Boolean
+    name: String, variable: GenericNodeBuilder[Variable], isLazy: Boolean, isTransient: Boolean
   ) extends Symbol {
     override def builders: Seq[NodeBuilder] = variable :: Nil
   }
@@ -80,6 +85,8 @@ class FlowBuilder(flowDef: FlowDef)(
     def name: String = scope
 
     def isLazy: Boolean = false
+
+    def isTransient: Boolean = false
 
     def export(name: String): NodeBuilder
 
@@ -152,7 +159,7 @@ class FlowBuilder(flowDef: FlowDef)(
 
         val proxy: Symbol = if (isVariable) {
           val switchCandidates = candidates.mapValues(_.asInstanceOf[VariableSymbol].variable.result)
-          VariableSymbol(name, NodeBuilder(Switch(name, switchCandidates, result)), isLazy = true)
+          VariableSymbol(name, NodeBuilder(Switch(name, switchCandidates, result)), isLazy = true, isTransient = false)
         } else {
           ExportProxy(name, candidates.values.map(_.asInstanceOf[ProcedureSymbol]).toSeq)
         }
@@ -204,11 +211,12 @@ class FlowBuilder(flowDef: FlowDef)(
     }
 
     def deps: Iterable[NodeBuilder] = {
-      loads ++ updates ++ branches.filter(!_.isLazy) ++ symbols.values.filter(!_.isLazy).flatMap(_.builders)
+      loads ++ updates ++ branches.filter(!_.isLazy) ++
+        symbols.values.filterNot(s => s.isLazy || s.isTransient).flatMap(_.builders)
     }
 
     def optDeps: Iterable[NodeBuilder] = {
-      branches.filter(_.isLazy) ++ symbols.values.filter(_.isLazy).flatMap(_.builders)
+      branches.filter(_.isLazy) ++ symbols.values.filter(s => s.isLazy || s.isTransient).flatMap(_.builders)
     }
 
 
@@ -230,16 +238,18 @@ class FlowBuilder(flowDef: FlowDef)(
       terminator
     }
 
-    def addVariable(name: String, build: String => GenericNodeBuilder[Variable], isLazy: Boolean): NodeBuilder = {
+    def addVariable(name: String, build: String => GenericNodeBuilder[Variable],
+      isLazy: Boolean, isTransient: Boolean
+    ): NodeBuilder = {
       val variableName = if (name.startsWith("$")) name.substring(1) else name
       require(!symbols.contains(variableName), s"symbol $variableName already exists")
 
       val builder = build(variableName)
       children += builder
-      symbols += name -> VariableSymbol(variableName, builder, isLazy)
+      symbols += name -> VariableSymbol(variableName, builder, isLazy, isTransient)
 
       if (name.startsWith("$")) {
-        val update = NodeBuilder(Update(name, builder.result))
+        val update = NodeBuilder(Update(name, builder.result, isTransient))
         children += update
         updates += update
       }
@@ -257,9 +267,9 @@ class FlowBuilder(flowDef: FlowDef)(
         val argument = placeholders.getOrElseUpdate(name.substring(1), Placeholder(name))
         NodeBuilder(argument)
       } else {
-         {
-           variables.get(name).map(_.variable)
-         } orElse {
+        {
+          variables.get(name).map(_.variable)
+        } orElse {
           parent.map(_.resolve(name))
         } getOrElse {
           panic(s"can not find variable $name")
@@ -277,7 +287,7 @@ class FlowBuilder(flowDef: FlowDef)(
       }
     }
 
-    implicit class ExpressionHelper(val expr: Expression)  {
+    implicit class ExpressionHelper(val expr: Expression) {
       def references: Seq[Reference] = {
         expr match {
           case ref: Reference if ref.name == "_" || ref.name == "#" => Nil
@@ -292,7 +302,8 @@ class FlowBuilder(flowDef: FlowDef)(
     }
 
     implicit class EvaluateHelper(val message: FlowDslMessage.EvaluateDef) {
-      def evaluate(finalName: String, stageName: String = ""): GenericNodeBuilder[Evaluate] = {
+      def evaluate(finalName: String, stageName: String = "",
+        isTransient: Boolean = false): GenericNodeBuilder[Evaluate] = {
         val name = if (stageName.isEmpty) finalName else makeTempName(finalName, stageName)
 
         val expr: Expression = expressionBuilder.build(message.getExpression)
@@ -306,7 +317,7 @@ class FlowBuilder(flowDef: FlowDef)(
         val failoverArgs: Map[String, NodeBuilder] = failover.map(_.args).getOrElse(Map.empty)
 
         val builder = NodeBuilder {
-          Evaluate(name, expr, args.mapValues(_.result))(failover, failoverArgs.mapValues(_.result))
+          Evaluate(name, expr, args.mapValues(_.result))(failover, failoverArgs.mapValues(_.result), isTransient)
         }
         children += builder
 
@@ -353,7 +364,11 @@ class FlowBuilder(flowDef: FlowDef)(
     }
 
     def parseAssignStatement(message: FlowDslMessage.AssignStatement): Unit = {
-      addVariable(message.getReference, message.getEvaluate.evaluate(_), message.getIsLazy)
+      addVariable(message.getReference,
+        name => message.getEvaluate.evaluate(name, isTransient = message.getIsTransient),
+        message.getIsLazy,
+        message.getIsTransient
+      )
     }
 
     def parseCompositeStatement(message: FlowDslMessage.CompositeStatement): Unit = {
@@ -364,11 +379,12 @@ class FlowBuilder(flowDef: FlowDef)(
           val args = expression.args.mapValues(_.result)
           NodeBuilder {
             Composite(name, message.getCompositor, args)(
-              compositors(message.getCompositor), expression, message.getIsBatch
+              compositors(message.getCompositor), expression, message.getIsBatch, message.getIsTransient
             )
           }
         },
-        message.getIsLazy
+        message.getIsLazy,
+        message.getIsTransient
       )
     }
 
@@ -411,7 +427,7 @@ class FlowBuilder(flowDef: FlowDef)(
 
         for (condition <- choice.getConditionList) {
           val node = if (condition.hasEvaluate) {
-            addVariable(condition.getName, condition.getEvaluate.evaluate(_), isLazy = true)
+            addVariable(condition.getName, condition.getEvaluate.evaluate(_), isLazy = true, isTransient = false)
           } else {
             resolve(condition.getName)
           }

@@ -1,0 +1,10 @@
+# /v2/transient
+
+***
+    count <~~ $store_count !! 0
+    delta <~~ @input_delta !! 1
+
+    $store_count <~~ count + delta
+
+    result <- $store_count
+***

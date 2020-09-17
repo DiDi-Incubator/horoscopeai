@@ -35,6 +35,7 @@ class ExecutorSuite extends FunSuite
   with Matchers with ScalaFutures
   with MockFactory with BeforeAndAfter
   with Logging {
+
   import com.didichuxing.horoscope.runtime.Implicits.{builtin, asDocument}
   import scala.concurrent.ExecutionContext.Implicits.global
   import scala.collection.JavaConversions._
@@ -46,7 +47,7 @@ class ExecutorSuite extends FunSuite
     .create()
 
   implicit val defaultPatience: PatienceConfig =
-    PatienceConfig(timeout =  Span(10000, Seconds), interval = Span(5, Millis))
+    PatienceConfig(timeout = Span(10000, Seconds), interval = Span(5, Millis))
 
   class MockEnv extends Environment {
     private val flows: mutable.Map[String, Flow] = mutable.Map()
@@ -178,8 +179,8 @@ class ExecutorSuite extends FunSuite
 
     val event = newEvent("0", "a")("composite")
     whenReady(executor.execute(event)) { instance =>
-      instance.assigns.keys should contain ("a")
-      instance.assigns.keys should contain ("b")
+      instance.assigns.keys should contain("a")
+      instance.assigns.keys should contain("b")
       instance.assigns.keys should not contain ("c")
       instance.assigns("write").value.as[String] shouldBe "success"
     }
@@ -217,8 +218,8 @@ class ExecutorSuite extends FunSuite
     }
 
     val compositor = env.compositor("concat", "")
-    (compositor.composite _).expects(where { args: ValueDict => concat(args) == "a-1"}).returns(Future(Value("a-1")))
-    (compositor.composite _).expects(where { args: ValueDict => concat(args) == "b-2"}).returns(Future(Value("b-2")))
+    (compositor.composite _).expects(where { args: ValueDict => concat(args) == "a-1" }).returns(Future(Value("a-1")))
+    (compositor.composite _).expects(where { args: ValueDict => concat(args) == "b-2" }).returns(Future(Value("b-2")))
 
     val event = newEvent("0", "a")("batch")
     whenReady(executor.execute(event)) { instance =>
@@ -233,8 +234,8 @@ class ExecutorSuite extends FunSuite
     }
 
     val compositor = env.compositor("concat", "")
-    (compositor.composite _).expects(where { args: ValueDict => concat(args) == "a-1"}).returns(Future(Value("a-1")))
-    (compositor.composite _).expects(where { args: ValueDict => concat(args) == "b-2"}).returns(Future(Value("b-2")))
+    (compositor.composite _).expects(where { args: ValueDict => concat(args) == "a-1" }).returns(Future(Value("a-1")))
+    (compositor.composite _).expects(where { args: ValueDict => concat(args) == "b-2" }).returns(Future(Value("b-2")))
 
     val event = newEvent("0", "a")("v2/batch")
     whenReady(executor.execute(event)) { instance =>
@@ -329,13 +330,16 @@ class ExecutorSuite extends FunSuite
     env.updateContext("a", "0", "$delta", Value(1))
 
     var seq: Int = 0
+
     def run(flag: Boolean): Future[FlowInstance] = {
       (env.compositor("wait", "").composite _).expects(
-        where {args: ValueDict => args.children.isEmpty}
-      ).onCall({_: ValueDict => Future {
-        Thread.sleep(200)
-        Value(LocalDateTime.now().toString)
-      }})
+        where { args: ValueDict => args.children.isEmpty }
+      ).onCall({ _: ValueDict =>
+        Future {
+          Thread.sleep(200)
+          Value(LocalDateTime.now().toString)
+        }
+      })
 
       seq += 1
       val event = newEvent(seq.toString, "a")("trace", "flag" -> Value(flag))
@@ -380,13 +384,16 @@ class ExecutorSuite extends FunSuite
     env.updateContext("a", "0", "$delta", Value(1))
 
     var seq: Int = 0
+
     def run(flag: Boolean): Future[FlowInstance] = {
       (env.compositor("wait", "").composite _).expects(
-        where {args: ValueDict => args.children.isEmpty}
-      ).onCall({_: ValueDict => Future {
-        Thread.sleep(200)
-        Value(LocalDateTime.now().toString)
-      }})
+        where { args: ValueDict => args.children.isEmpty }
+      ).onCall({ _: ValueDict =>
+        Future {
+          Thread.sleep(200)
+          Value(LocalDateTime.now().toString)
+        }
+      })
 
       seq += 1
       val event = newEvent(seq.toString, "a")("v2/trace", "flag" -> Value(flag))
@@ -430,7 +437,7 @@ class ExecutorSuite extends FunSuite
   test("error") {
     val action = env.compositor("action", "")
     (action.composite _).expects(
-      where {_: ValueDict => true}
+      where { _: ValueDict => true }
     ).returns(
       Future.failed(new NotImplementedError("hehe"))
     )
@@ -482,12 +489,12 @@ class ExecutorSuite extends FunSuite
     val event = newEvent("1", "a")("goto", "arg" -> Value("argument"))
     whenReady(executor.execute(event)) { instance =>
       instance.assigns("need_infer").value.as[Boolean] shouldBe (true)
-      instance.hasGoto should be (true)
+      instance.hasGoto shouldBe true
     }
   }
 
   test("v2/schedule") {
-    val event = newEvent("1", "a")("v2/schedule" )
+    val event = newEvent("1", "a")("v2/schedule")
     whenReady(executor.execute(event)) { instance =>
       instance("schedule[0].parent.event_id").as[String] shouldBe "1"
       instance("schedule[0].parent.trace_id").as[String] shouldBe "a"
@@ -516,5 +523,41 @@ class ExecutorSuite extends FunSuite
       lastProcedure.eval(""" scope[?(_ == "rest")].length() """).as[Int] shouldBe 32
     }
   }
+
+  test("v2/transient") {
+    var seq: Int = 0
+
+    def run(delta: Option[Int]): Future[FlowInstance] = {
+      seq += 1
+      val event = newEvent(seq.toString, "a")("/v2/transient", delta.map(d => "input_delta" -> Value(d)).toArray: _*)
+      executor.execute(event)
+    }
+
+    val one = run(None)
+    val two = run(Some(1))
+    val five = run(Some(3))
+    val ten = run(Some(5))
+
+    whenReady(one) { instance =>
+      instance("procedure[0].assign").as[Map[String, Int]] shouldBe Map("result" -> 1)
+      instance.getUpdateList.isEmpty shouldBe true
+    }
+
+    whenReady(two) { instance =>
+      instance("procedure[0].assign").as[Map[String, Int]] shouldBe Map("result" -> 2)
+      instance.getUpdateList.isEmpty shouldBe true
+    }
+
+    whenReady(five) { instance =>
+      instance("procedure[0].assign").as[Map[String, Int]] shouldBe Map("result" -> 5)
+      instance.getUpdateList.isEmpty shouldBe true
+    }
+
+    whenReady(ten) { instance =>
+      instance("procedure[0].assign").as[Map[String, Int]] shouldBe Map("result" -> 10)
+      instance.getUpdateList.isEmpty shouldBe true
+    }
+  }
+
 }
 

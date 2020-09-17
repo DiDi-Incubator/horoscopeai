@@ -22,6 +22,7 @@ class Flow(val flowDef: FlowDef)(
   val arguments: Map[String, Flow.Placeholder],
   val variables: Map[String, Flow.Node]
 ) {
+
   import scala.collection.JavaConversions._
 
   def name: String = flowDef.getName
@@ -34,6 +35,7 @@ class Flow(val flowDef: FlowDef)(
 }
 
 object Flow {
+
   import com.didichuxing.horoscope.core.FlowDslMessage._
 
   implicit def nodeOrdering: Ordering[Node] = Ordering.by(_.index)
@@ -59,7 +61,7 @@ object Flow {
       val flow = builder.build()
 
       for (node <- flow.nodes) {
-        for(dep <- node.deps ++ node.optDeps) {
+        for (dep <- node.deps ++ node.optDeps) {
           flow.nodes(dep.index)._descendants += node
         }
 
@@ -91,20 +93,21 @@ object Flow {
     override val deps: Set[Node] = Set.empty
   }
 
-  case class Update(name: String, value: Node) extends Node {
+  case class Update(name: String, value: Node, isTransient: Boolean) extends Node {
     override val deps: Set[Node] = Set(value)
     override val optDeps: Set[Node] = Set.empty
   }
 
   case class Evaluate(name: String, expression: Expression, args: Map[String, Node])(
-    val failover: Option[Expression] = None, val failoverArgs: Map[String, Node] = Map.empty
+    val failover: Option[Expression] = None, val failoverArgs: Map[String, Node] = Map.empty,
+    override val isTransient: Boolean = false
   ) extends Node with Variable {
     override val deps: Set[Node] = args.values.toSet
     override val optDeps: Set[Node] = failoverArgs.values.toSet
   }
 
   case class Composite(name: String, compositor: String, context: Map[String, Node])(
-    val impl: Compositor, val argument: Expression, val isBatch: Boolean
+    val impl: Compositor, val argument: Expression, val isBatch: Boolean, override val isTransient: Boolean = false
   ) extends Node with Variable {
     override val deps: Set[Node] = context.values.toSet
 
@@ -137,6 +140,8 @@ object Flow {
   ) extends Node with Variable {
     override val deps: Set[Node] = Set(by)
 
+    override def isTransient: Boolean = true
+
     override val optDeps: Set[Node] = candidates.values.toSet
   }
 
@@ -144,6 +149,8 @@ object Flow {
     def name: String
 
     def isLazy: Boolean = !leader.deps.contains(this)
+
+    def isTransient: Boolean
 
     override val optDeps: Set[Node] = Set.empty
   }
@@ -223,5 +230,6 @@ object Flow {
 
     def build(): Flow
   }
+
 }
 

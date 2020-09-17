@@ -33,6 +33,7 @@ class FlowInterpreter(
   event: FlowEvent,
   traceContext: Map[String, TraceVariable]
 ) extends Actor with Logging {
+
   import context.dispatcher
   import env._
 
@@ -40,7 +41,9 @@ class FlowInterpreter(
 
   // messages handled by actor
   case class Continue(context: Context)
+
   case class CompositeResult(context: CompositeContext, result: Try[Value])
+
   case class BatchCompositeResult(context: BatchCompositeContext, result: Try[Value])
 
   val traceId: String = event.getTraceId
@@ -243,6 +246,8 @@ class FlowInterpreter(
     implicit override val procedure: FlowContext
   ) extends Context {
     var waitingNodes: List[Node] = Nil
+    // 此处仅计算直接依赖的deps，而间接依赖的optDeps并未在terminator的execute里执行
+    // 从而isLazy的配置生效
     var remainingNodes: List[Node] = terminator.deps.toList
 
     override protected def execute(): Dependencies = {
@@ -347,7 +352,7 @@ class FlowInterpreter(
 
           val delta = update.name -> traceVariable.build()
           Trace.variables += delta
-          Trace.updates += delta
+          if (!update.isTransient) Trace.updates += delta
           Trace.loads -= update.name
 
           done(variable)
@@ -431,7 +436,7 @@ class FlowInterpreter(
 
     override protected def onComplete: Handle = super.onComplete orElse {
       case Success(value) =>
-        if (!name.startsWith("-")) {
+        if (!name.startsWith("-") && !evaluate.isTransient) {
           procedure.log.putAssign(name, value.as[FlowValue])
         }
         procedure.log.setEndTime(System.currentTimeMillis())
@@ -452,8 +457,8 @@ class FlowInterpreter(
           val argument = composite.argument(Value(context)).as[ValueDict]
 
           log.setCompositor(composite.compositor)
-          log.setArgument(argument.as[FlowValue])
           log.setStartTime(System.currentTimeMillis())
+          if (!composite.isTransient) log.setArgument(argument.as[FlowValue])
 
           future = composite.impl.composite(argument)
           future onComplete { result =>
@@ -467,7 +472,7 @@ class FlowInterpreter(
 
     override protected def onComplete: Handle = super.onComplete orElse {
       case Success(value) =>
-        log.setResult(value.as[FlowValue])
+        if (!composite.isTransient) log.setResult(value.as[FlowValue])
         log.setEndTime(System.currentTimeMillis())
         procedure.log.putComposite(name, log.build())
     }
@@ -658,7 +663,7 @@ class FlowInterpreter(
           case _: UninitializedFieldError =>
           case _: SyntaxException =>
           case _: SemanticException =>
-            // do not need to log detail when caused by upstream fault
+          // do not need to log detail when caused by upstream fault
 
           case _ =>
             val detail: StringWriter = new StringWriter()
@@ -670,4 +675,5 @@ class FlowInterpreter(
         procedure.log.setEndTime(System.currentTimeMillis())
     }
   }
+
 }

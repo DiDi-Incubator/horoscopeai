@@ -45,10 +45,12 @@ class FlowExecutorImpl(
   }
 
   private val contextCache: Cache[String, Map[String, TraceVariable]] = CacheBuilder.newBuilder()
-    .maximumSize(100000)
+    .maximumSize(Try(config.getInt("horoscope.flow-executor.context-cache.maximum-size")).getOrElse(100000))
     .concurrencyLevel(128)
-    .expireAfterAccess(20, TimeUnit.MINUTES)
-    .build()
+    .expireAfterAccess(
+      Try(config.getInt("horoscope.flow-executor.context-cache.expire-after-access-minutes")).getOrElse(20),
+      TimeUnit.MINUTES
+    ).build()
 
   private var manager: ActorRef = actorSystem.deadLetters
 
