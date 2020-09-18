@@ -88,7 +88,7 @@ class FlowCompiler extends FlowBaseListener with Logging {
     val composite = statement.getCompositeStatementBuilder
     composite.setCompositor(ctx.UCAMEL().getText)
     val naming = ctx.naming()
-    if (naming.variable() != null) {
+    if (naming != null) {
       composite.setReference(naming.variable().getText)
       if (naming.isLazy != null) {
         composite.setIsLazy(true)
@@ -120,7 +120,7 @@ class FlowCompiler extends FlowBaseListener with Logging {
     composite.setCompositor(ctx.UCAMEL().getText)
     composite.setIsBatch(true)
     val naming = ctx.naming()
-    if (naming.variable() != null) {
+    if (naming != null) {
       composite.setReference(naming.variable().getText)
       if (naming.isLazy != null) {
         composite.setIsLazy(true)
