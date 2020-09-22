@@ -1,0 +1,25 @@
+query ($driver_id: Long!, $start: Long!, $end: Long!) {
+    user(identity: {userId: $driver_id}, userType: DRIVER) {
+        orders(start: $start, end: $end, limit: 3
+        ) {
+            orderBase {
+                orderId
+                travelId
+                area
+                productId
+            }
+            orderStatus {
+                assignedTime
+                begunTime
+                finishedTime
+                cancelledTime
+                additionalFields {
+                    finishedLat
+                    finishedLng
+                    begunLat
+                    begunLng
+                }
+            }
+        }
+    }
+}
