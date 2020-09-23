@@ -4,19 +4,21 @@
  */
 package com.didichuxing.horoscope.ods
 
-import com.didichuxing.horoscope.core.FlowRuntimeMessage.{FlowEvent, FlowInstance}
+import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowInstance
 import com.didichuxing.horoscope.runtime.Value
 import com.didichuxing.horoscope.runtime.convert.ValueTypeAdapter
 import com.google.gson.{Gson, GsonBuilder}
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
-import scala.util.Try
 
 final class ProcedureViewBuilder {
   import ProcedureViewBuilder._
   private var fi: FlowInstance = _
   private var proc: FlowInstance.Procedure = _
+  private var isDetail: Boolean = true
+  private var includeDescendants: Map[String, String] = Map.empty // pid -> parentId
+  private var scheduleDescendants: Map[String, Seq[String]] = Map.empty // pid -> scheduled child pid list
 
   def withFlowInstance(fi: FlowInstance): ProcedureViewBuilder = {
     this.fi = fi
@@ -28,11 +30,23 @@ final class ProcedureViewBuilder {
     this
   }
 
+  def isDetail(v: Boolean): ProcedureViewBuilder = {
+    this.isDetail = v
+    this
+  }
+
+  def withIncludeDescendants(v: Map[String, String]): ProcedureViewBuilder = {
+    this.includeDescendants = v
+    this
+  }
+
+  def withScheduleDescendants(v: Map[String, Seq[String]]): ProcedureViewBuilder = {
+    this.scheduleDescendants = v
+    this
+  }
+
   private def buildId(): String = {
-    val b = new ArrayBuffer[String]()
-    b ++= Array("", fi.getEvent.getTraceId, fi.getEvent.getEventId)
-    b ++= proc.getScopeList.asScala
-    b.mkString("/")
+    createProcedureId(fi.getEvent.getTraceId, fi.getEvent.getEventId, proc.getScopeList.asScala)
   }
 
   private def buildArgument(): Map[String, String] = {
@@ -60,40 +74,100 @@ final class ProcedureViewBuilder {
 
   private def buildFault(): Map[String, Fault] = {
     proc.getFaultMap.asScala.mapValues { f =>
-      Fault(f.getCatalog, f.getMessage, f.getDetail)
+      if (isDetail) {
+        Fault(f.getCatalog, f.getMessage, f.getDetail)
+      } else {
+        Fault(f.getCatalog, f.getMessage, "")
+      }
     }.toMap
   }
 
-  def build(): ProcedureView = {
+  private def buildLoad(): Array[Load] = {
+    proc.getLoadList.asScala.map { l =>
+      val ref = l.getReference
+      val k = ref.getName.substring(1)
+      val v = Value(l.getValue).toJson
+      val pid = createProcedureId(fi.getEvent.getTraceId, ref.getEventId, ref.getScopeList.asScala)
+      Load(k, v, pid, ref.getFlowName)
+    }.toArray
+  }
+
+  private def buildAncestor(): String = {
+    // check if main procedure
+    if (proc.getScopeCount == 0 || (proc.getScopeCount == 1 && proc.getScopeList.contains("main"))) {
+      // scheduled event
+      if (fi.getEvent.hasParent) {
+        val parent = fi.getEvent.getParent
+        createProcedureId(parent.getTraceId, parent.getEventId, parent.getScopeList.asScala)
+      } else {
+        ""
+      }
+    } else {
+      createProcedureId(fi.getEvent.getTraceId,
+        fi.getEvent.getEventId, proc.getScopeList.asScala.slice(0, proc.getScopeCount - 1))
+    }
+  }
+
+  private def buildDescendants(pid: String): Array[String] = {
+    val b = new ArrayBuffer[String]()
+    this.includeDescendants.foreach { case (id, parentId) =>
+      if (parentId == pid) {
+        b += id
+      }
+    }
+    if (this.scheduleDescendants.contains(pid)) {
+      b ++= this.scheduleDescendants.get(pid).get
+    }
+    b.sorted.toArray
+  }
+
+  private def buildStartTime(): Long = if (proc.getStartTime > 0) proc.getStartTime else fi.getStartTime
+
+  private def buildEndTime(): Long = if (proc.getEndTime > 0) proc.getEndTime else fi.getEndTime
+
+  private def buildDetail(): ProcedureView = {
+    val id = buildId()
     ProcedureView(
-      fi.getEvent.getTraceId,
-      buildId(),
-      proc.getFlowName,
-      if (proc.getStartTime > 0) proc.getStartTime else fi.getStartTime,
-      if (proc.getEndTime > 0) proc.getEndTime else fi.getEndTime,
-      proc.getChoiceList.asScala,
-      buildArgument(),
-      buildResult(),
-      buildComposite(),
-      buildFault()
+      id = id,
+      trace_id = fi.getEvent.getTraceId,
+      flow_name = proc.getFlowName,
+      flow_id = proc.getFlowId,
+      start_time = buildStartTime(),
+      end_time = buildEndTime(),
+      choice = proc.getChoiceList.asScala,
+      argument = buildArgument(),
+      result = buildResult(),
+      composite = buildComposite(),
+      fault = buildFault(),
+      load = buildLoad(),
+      ancestor = buildAncestor(),
+      descendants = buildDescendants(id)
     )
   }
 
-  def buildLite(): ProcedureView = {
+  private def buildLite(): ProcedureView = {
+    val id = buildId()
     ProcedureView(
-      fi.getEvent.getTraceId,
-      buildId(),
-      proc.getFlowName,
-      if (proc.getStartTime > 0) proc.getStartTime else fi.getStartTime,
-      if (proc.getEndTime > 0) proc.getEndTime else fi.getEndTime,
-      choice = Seq.empty[String],
-      argument = Map.empty[String, String],
-      buildResult(),
-      composite = Map.empty[String, Composite],
-      fault = proc.getFaultMap.asScala.mapValues { f =>
-        Fault(f.getCatalog, f.getMessage, "")
-      }.toMap
+      id = id,
+      trace_id = fi.getEvent.getTraceId,
+      flow_name = proc.getFlowName,
+      flow_id = proc.getFlowId,
+      start_time = buildStartTime(),
+      end_time = buildEndTime(),
+      choice = proc.getChoiceList.asScala,
+      result = buildResult(),
+      fault = buildFault(),
+      ancestor = buildAncestor(),
+      descendants = buildDescendants(id)
     )
+  }
+
+  def build(): ProcedureView = {
+    if (isDetail) {
+      buildDetail()
+    } else {
+      buildLite()
+    }
   }
 
 }
@@ -103,4 +177,38 @@ object ProcedureViewBuilder {
     .registerTypeHierarchyAdapter(classOf[Value], new ValueTypeAdapter)
     .serializeNulls()
     .create()
+
+  def buildFrom(fi: FlowInstance, isDetail: Boolean = true): Seq[ProcedureView] = {
+    val includeDescendants = fi.getProcedureList.asScala.map { proc =>
+      val parentId = createProcedureId(fi.getEvent.getTraceId,
+        fi.getEvent.getEventId, proc.getScopeList.asScala.slice(0, proc.getScopeCount - 1))
+      val childId = createProcedureId(fi.getEvent.getTraceId, fi.getEvent.getEventId, proc.getScopeList.asScala)
+      childId -> parentId
+    }.toMap
+    val scheduleDescendants: Map[String, Seq[String]] = fi.getScheduleList.asScala.map { sched =>
+      val parent = sched.getParent
+      val parentId = createProcedureId(parent.getTraceId, parent.getEventId, parent.getScopeList.asScala)
+      val scheduleId = createProcedureId(sched.getTraceId, sched.getEventId, Seq("main"))
+      parentId -> scheduleId
+    }.groupBy(_._1).mapValues(_.distinct.map(_._2).toSeq)
+    fi.getProcedureList.asScala.map { proc =>
+      val b = new ProcedureViewBuilder()
+        .withFlowInstance(fi)
+        .withProcedure(proc)
+        .isDetail(isDetail)
+        .withIncludeDescendants(includeDescendants)
+        .withScheduleDescendants(scheduleDescendants)
+      b.build()
+    }
+  }
+
+  private def createProcedureId(traceId: String, eventId: String, scopes: Seq[String]): String = {
+    val b = new StringBuilder
+    b.append(s"/${traceId}/${eventId}")
+    scopes.foreach { c =>
+      b.append("/")
+      b.append(c)
+    }
+    b.toString()
+  }
 }

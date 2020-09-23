@@ -76,7 +76,7 @@ class FlowInterpreter(
         .setStartTime(System.currentTimeMillis())
     }
 
-    override lazy val procedure: FlowContext = new FlowContext(event.getFlowName, Nil, event.getArgumentMap)
+    override lazy val procedure: FlowContext = new FlowContext(event.getFlowName, Seq("main"), event.getArgumentMap)
 
     override protected def execute(): Dependencies = {
       if (procedure.isDone) {
@@ -206,7 +206,6 @@ class FlowInterpreter(
           }
           procedure.nodes(placeholder.index) = target.nodes(target.flow.variables(name).index)
         }
-        procedure.log.setEndTime(System.currentTimeMillis())
     }
   }
 
@@ -439,7 +438,6 @@ class FlowInterpreter(
         if (!name.startsWith("-") && !evaluate.isTransient) {
           procedure.log.putAssign(name, value.as[FlowValue])
         }
-        procedure.log.setEndTime(System.currentTimeMillis())
     }
   }
 
@@ -473,7 +471,6 @@ class FlowInterpreter(
     override protected def onComplete: Handle = super.onComplete orElse {
       case Success(value) =>
         if (!composite.isTransient) log.setResult(value.as[FlowValue])
-        log.setEndTime(System.currentTimeMillis())
         procedure.log.putComposite(name, log.build())
     }
   }
@@ -519,7 +516,6 @@ class FlowInterpreter(
     override protected def onComplete: Handle = super.onComplete orElse {
       case Success(value) =>
         log.setResult(value.as[FlowValue])
-        log.setEndTime(System.currentTimeMillis())
         procedure.log.putComposite(name, log.build())
     }
   }
@@ -672,7 +668,6 @@ class FlowInterpreter(
         }
 
         procedure.log.putFault(name, fault.build())
-        procedure.log.setEndTime(System.currentTimeMillis())
     }
   }
 

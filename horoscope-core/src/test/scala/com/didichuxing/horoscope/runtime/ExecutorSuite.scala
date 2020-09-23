@@ -19,6 +19,7 @@ import com.didichuxing.horoscope.runtime.convert.ValueTypeAdapter
 import com.didichuxing.horoscope.util.Logging
 import com.google.common.io.Resources
 import com.google.gson.{Gson, GsonBuilder}
+import com.google.protobuf.util.JsonFormat
 import com.typesafe.config.ConfigFactory
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.concurrent.ScalaFutures
@@ -461,7 +462,6 @@ class ExecutorSuite extends FunSuite
 
     val event = newEvent("0", "a")("v2/failover")
     whenReady(executor.execute(event)) { instance =>
-      info(instance.toString)
       instance("procedure[0].choice").as[Seq[String]] shouldBe Seq("failover")
       instance("procedure[0].assign.result").as[Int] shouldBe 0
       instance("procedure[0].assign.failover").as[Boolean] shouldBe true
@@ -515,11 +515,11 @@ class ExecutorSuite extends FunSuite
     whenReady(executor.execute(event)) { instance =>
       instance("procedure[0].assign.pi").as[Double] shouldBe 3.14159265 +- 0.00000001
       instance(""" procedure[?(_.flow_name == "/v2/acrcot")].length() """).as[Int] shouldBe 66
-      instance(""" procedure[?(_.flow_name == "/v2/acrcot" and _.scope[0] == "left")].length() """).as[Int] shouldBe 33
-      instance(""" procedure[?(_.flow_name == "/v2/acrcot" and _.scope[0] == "right")].length() """).as[Int] shouldBe 33
+      instance(""" procedure[?(_.flow_name == "/v2/acrcot" and _.scope[1] == "left")].length() """).as[Int] shouldBe 33
+      instance(""" procedure[?(_.flow_name == "/v2/acrcot" and _.scope[1] == "right")].length() """).as[Int] shouldBe 33
 
       val lastProcedure =
-        instance(""" procedure[?(_.flow_name == "/v2/acrcot" and _.scope[0] == "left")][-][-1] """).as[ValueDict]
+        instance(""" procedure[?(_.flow_name == "/v2/acrcot" and _.scope[1] == "left")][-][-1] """).as[ValueDict]
       lastProcedure.eval(""" scope[?(_ == "rest")].length() """).as[Int] shouldBe 32
     }
   }

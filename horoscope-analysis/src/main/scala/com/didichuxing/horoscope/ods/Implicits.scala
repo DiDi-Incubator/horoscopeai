@@ -5,8 +5,8 @@
 package com.didichuxing.horoscope.ods
 
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowInstance
-import com.didichuxing.horoscope.runtime.{NULL, Value, ValueDict}
 import com.didichuxing.horoscope.runtime.convert.ValueTypeAdapter
+import com.didichuxing.horoscope.runtime.{NULL, Value, ValueDict}
 import com.google.gson.{Gson, GsonBuilder}
 
 object Implicits {
@@ -20,7 +20,9 @@ object Implicits {
   }
 
   implicit class FlowInstanceHelper(instance: FlowInstance) {
+
     import com.didichuxing.horoscope.runtime.Implicits.builtin
+
     private val v = Value(instance).asInstanceOf[ValueDict]
     val traceId = instance.getEvent.getTraceId
     val eventId = instance.getEvent.getEventId
