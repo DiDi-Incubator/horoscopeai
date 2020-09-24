@@ -99,6 +99,9 @@ class ZookeeperFlowStoreSuite extends FunSuite
     val store = newStore()
     store.load(flowDir)
 
+    // wait delete to work
+    Thread.sleep(1000)
+
     Get("/tree/") ~> store.api ~> check {
       responseAs[JsValue].convertTo[Set[String]] shouldBe Set(
         "/test/",
