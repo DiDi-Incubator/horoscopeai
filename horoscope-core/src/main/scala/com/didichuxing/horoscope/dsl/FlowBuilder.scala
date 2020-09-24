@@ -16,6 +16,7 @@ import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.duration.Duration
 import scala.language.implicitConversions
+import scala.util.Try
 
 class FlowBuilder(flowDef: FlowDef)(
   implicit
@@ -29,7 +30,9 @@ class FlowBuilder(flowDef: FlowDef)(
 
   private val compositors: Map[String, Compositor] = {
     flowDef.getDeclaration.getCompositorList.map(
-      desc => (desc.getName, buildCompositor(desc))
+      desc => (desc.getName, Try(buildCompositor(desc)).recover({
+        case e: Throwable => Compositor.failed(e)
+      }).get)
     ).toMap
   }
   private val expressionBuilder = new ExpressionBuilder(builtin)
