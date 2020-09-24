@@ -14,7 +14,7 @@ import com.didichuxing.horoscope.runtime.{IgnoredException, Value}
 import com.didichuxing.horoscope.service.ApplicationContext
 import com.didichuxing.horoscope.service.source.EventProcessErrorCode._
 import com.didichuxing.horoscope.util.Utils._
-import com.didichuxing.horoscope.util.{Logging, Utils}
+import com.didichuxing.horoscope.util.{Logging, PublicLog, Utils}
 import com.google.gson.{Gson, GsonBuilder}
 import com.google.protobuf.util.JsonFormat
 import com.typesafe.config.Config
@@ -44,6 +44,8 @@ class DefaultEventProcessor(sourceName: String, params: Config)
   val retryFlowEvents = new ConcurrentHashMap[String, Integer]()
   //最大重试次数
   val maxRetryCount = configIntOrDefault(params, "exec.retry", 1)
+  //反压超时决绝服务日志
+  val rejectLog = new PublicLog("map_traffic_horoscope_reject")
 
   override def start(): Unit = {
     backPress = new Semaphore(Try(params.getInt("backpress.permits")).getOrElse(100), true)
@@ -86,7 +88,14 @@ class DefaultEventProcessor(sourceName: String, params: Config)
       }
     } else {
       error(("msg", "add mailbox error backpress timeout"), ("available", backPress.availablePermits()))
-      new Array[FlowEvent](eventSize).toList
+      if (Try(params.getBoolean("backpress.reject")).getOrElse(false)) {
+        events.foreach(e => {
+          rejectLog.public(("flow_event", Value(e).toJson))
+        })
+        events
+      } else {
+        new Array[FlowEvent](eventSize).toList
+      }
     }
   }
 
@@ -201,7 +210,7 @@ class DefaultEventProcessor(sourceName: String, params: Config)
       try {
         storeService.addEvent(sourceName, flowEvent.toBuilder)
         val f = flowExecutor.execute(flowEvent)
-        val executeTimeout = Try(params.getInt("execute-timeout")).getOrElse(3)
+        val executeTimeout = Try(params.getInt("execute-timeout")).getOrElse(10)
         val flowInstance = Await.result(f, executeTimeout seconds)
         if (commitCheck(flowEvent)) {
           val fib = storeService.commitEvent(sourceName, flowInstance.toBuilder)
