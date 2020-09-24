@@ -118,7 +118,7 @@ class ZookeeperFlowStore(curator: CuratorFramework) extends FlowStore with TreeC
           post {
             extractRequestContext { context =>
               import context.materializer
-              fileUpload("file") { case (meta, byteSource) =>
+              fileUpload("file") { case (_, byteSource) =>
                 onSuccess(byteSource.runFold("")(_ + _.utf8String)) { text =>
                   run { update(checkSyntax(text).name, text) }
                 }
