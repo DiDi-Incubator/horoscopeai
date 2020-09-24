@@ -6,22 +6,26 @@
 
 package com.didichuxing.horoscope.service.storage
 
+import java.io.ByteArrayOutputStream
 import java.nio.file.{FileVisitOption, Files, Path}
 import java.util.concurrent.{Executors, Semaphore}
 import java.util.function.Consumer
+import java.util.zip.{ZipEntry, ZipOutputStream}
 
-import akka.http.scaladsl.model.StatusCodes
-import akka.http.scaladsl.server.Route
-import com.didichuxing.horoscope.core.FlowDslMessage.FlowDef
-import com.didichuxing.horoscope.core.FlowStore
+import akka.http.scaladsl.model.headers.{ContentDispositionTypes, `Content-Disposition`}
+import akka.http.scaladsl.model.{HttpEntity, HttpResponse, MediaTypes, StatusCodes}
+import akka.http.scaladsl.server.{Route, StandardRoute}
+import com.didichuxing.horoscope.core.FlowDslMessage.{CompositorDef, FlowDef}
+import com.didichuxing.horoscope.core.{Compositor, Flow, FlowStore}
 import com.didichuxing.horoscope.dsl.FlowCompiler
-import com.didichuxing.horoscope.runtime.Value
+import com.didichuxing.horoscope.runtime.{Value, ValueDict}
+import com.didichuxing.horoscope.runtime.expression.BuiltIn
 import com.didichuxing.horoscope.util.Logging
 import org.apache.curator.framework.CuratorFramework
 import org.apache.curator.framework.recipes.cache.{TreeCache, TreeCacheEvent, TreeCacheListener}
 
-import scala.concurrent.ExecutionContext
-import scala.util.Try
+import scala.concurrent.{ExecutionContext, Future}
+import scala.language.implicitConversions
 
 class ZookeeperFlowStore(curator: CuratorFramework) extends FlowStore with TreeCacheListener with Logging {
   import ZookeeperFlowStore._
@@ -59,7 +63,12 @@ class ZookeeperFlowStore(curator: CuratorFramework) extends FlowStore with TreeC
     if (event.getType == NODE_ADDED || event.getType == NODE_UPDATED) {
       val data = event.getData
       if (data.getData != null && data.getData.nonEmpty) {
-        flows += data.getPath -> FlowCompiler.compile(new String(data.getData))
+        try {
+          flows += data.getPath -> FlowCompiler.compile(new String(data.getData))
+        } catch {
+          case e: Exception =>
+            logging.error(s"fail to parse flow ${data.getPath}", e)
+        }
       }
     }
 
@@ -68,11 +77,8 @@ class ZookeeperFlowStore(curator: CuratorFramework) extends FlowStore with TreeC
     }
   }
 
-  private def update(text: String, name: Option[String] = None): Unit = {
-    val flow = FlowCompiler.compile(text)
-    require(name.forall(_ == flow.getName))
-
-    val path = "/tree" + flow.getName
+  private def update(name: String, text: String): Unit = {
+    val path = "/tree" + name
     curator.createContainers(path)
     curator.setData().forPath(path, text.getBytes)
   }
@@ -82,7 +88,8 @@ class ZookeeperFlowStore(curator: CuratorFramework) extends FlowStore with TreeC
       def accept(file: Path): Unit =
         if (Files.isReadable(file) && file.toFile.getName.endsWith(".flow")) {
           try {
-            update(new String(Files.readAllBytes(file)))
+            val text = new String(Files.readAllBytes(file))
+            update(checkSyntax(text).name, text)
           } catch {
             case exception: Exception =>
               logging.error(s"fail to load $file", exception)
@@ -102,36 +109,83 @@ class ZookeeperFlowStore(curator: CuratorFramework) extends FlowStore with TreeC
     import akka.http.scaladsl.server.Directives._
     import com.didichuxing.horoscope.runtime.Implicits._
 
-    path("tree" ~ Remaining) { remaining =>
-      if (remaining.isEmpty) {
-        complete(Value(walk()))
-      } else if (remaining.endsWith("/")) {
-        // dir operations
+    path("tree" ~ Remaining) {
+      case "" =>
+        concat(
+          get {
+            complete(Value(walk()))
+          },
+          post {
+            extractRequestContext { context =>
+              import context.materializer
+              fileUpload("file") { case (meta, byteSource) =>
+                onSuccess(byteSource.runFold("")(_ + _.utf8String)) { text =>
+                  run { update(checkSyntax(text).name, text) }
+                }
+              }
+            }
+          }
+        )
+
+      case remaining: String if remaining.endsWith("/") =>
         val path = if (remaining == "/") remaining else remaining.init
         complete(Value(listChildren(path)))
-      } else {
-        // flow operations
+
+      case remaining: String if remaining.endsWith("/...") =>
+        complete(archive(remaining.split('/').filterNot(str => str.isEmpty || str == "...")))
+
+      case remaining: String =>
         concat(
           get {
             complete(new String(tree.getCurrentData(remaining).getData))
           },
           put {
-            entity(as[String]) { value =>
-              complete(Try {
-                update(value, Some(remaining))
-                StatusCodes.OK
-              })
+            entity(as[String]) { text =>
+              run {
+                require(checkSyntax(text).name == remaining, "wrong flow name in header")
+                update(remaining, text)
+              }
             }
           },
           delete {
-            complete(Try {
-              curator.delete().deletingChildrenIfNeeded().forPath("/tree" + remaining)
-              StatusCodes.OK
-            })
+            curator.delete().deletingChildrenIfNeeded().forPath("/tree" + remaining)
+            complete(StatusCodes.OK)
           }
         )
-      }
     }
+  }
+
+  def run(block: => Unit): StandardRoute = {
+    import akka.http.scaladsl.server.Directives._
+    try {
+      block
+      complete(StatusCodes.OK)
+    } catch {
+      case e: Exception =>
+        complete(StatusCodes.NotAcceptable, e.getMessage)
+    }
+  }
+
+  def archive(segments: Seq[String]): HttpResponse = {
+    val output = new ByteArrayOutputStream()
+    val stream = new ZipOutputStream(output)
+
+    def doArchive(node: Node): Unit = {
+      if (node.flow != null && node.flow.nonEmpty) {
+        val path = node.flow
+        stream.putNextEntry(new ZipEntry(node.flow + ".flow"))
+        stream.write(tree.getCurrentData(path).getData)
+        stream.closeEntry()
+      }
+      node.children.foreach(doArchive)
+    }
+
+    doArchive(walk(segments))
+    stream.close()
+
+    HttpResponse()
+      .withEntity(HttpEntity(MediaTypes.`application/zip`, output.toByteArray))
+      .addHeader(`Content-Disposition`(ContentDispositionTypes.inline, Map("filename" -> "infoflow.zip")))
   }
 
   def walk(segments: Seq[String] = Nil): Node = {
@@ -168,4 +222,17 @@ class ZookeeperFlowStore(curator: CuratorFramework) extends FlowStore with TreeC
 
 object ZookeeperFlowStore {
   case class Node(name: String, flow: String, children: Seq[Node])
+
+  def checkSyntax(text: String): Flow = {
+    implicit def buildCompositor(compositorDef: CompositorDef): Compositor = new Compositor {
+      def composite(args: ValueDict): Future[Value] = {
+        Future.failed(new NotImplementedError())
+      }
+    }
+
+    // scalastyle:off
+    implicit val builtin: BuiltIn = new BuiltIn(Map.empty, Map.empty)
+
+    Flow(FlowCompiler.compile(text))
+  }
 }

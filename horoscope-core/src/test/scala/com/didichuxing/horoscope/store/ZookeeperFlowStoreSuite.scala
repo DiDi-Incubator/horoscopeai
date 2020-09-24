@@ -9,6 +9,8 @@ package com.didichuxing.horoscope.store
 import java.nio.file.{Files, Path, Paths}
 import java.util.UUID
 
+import akka.http.scaladsl.Http
+import akka.http.scaladsl.server.Route
 import akka.http.scaladsl.testkit.ScalatestRouteTest
 import com.didichuxing.horoscope.core.FlowDslMessage.FlowDef
 import com.didichuxing.horoscope.dsl.FlowCompiler
@@ -19,6 +21,8 @@ import org.apache.curator.retry.RetryForever
 import org.apache.curator.test.TestingServer
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.{BeforeAndAfterAll, FunSuite, Matchers}
+
+import scala.io.StdIn
 
 class ZookeeperFlowStoreSuite extends FunSuite
   with Matchers
@@ -118,5 +122,23 @@ class ZookeeperFlowStoreSuite extends FunSuite
         "/root/"
       )
     }
+  }
+
+  ignore("local-http-server") {
+    import akka.http.scaladsl.server.Directives._
+
+    val store = newStore()
+    store.load(flowDir)
+
+    val route: Route = {
+      pathPrefix("api") {
+        pathPrefix("flow") {
+          store.api
+        }
+      }
+    }
+
+    Http().bindAndHandle(route, "localhost", 1234)
+    StdIn.readLine()
   }
 }

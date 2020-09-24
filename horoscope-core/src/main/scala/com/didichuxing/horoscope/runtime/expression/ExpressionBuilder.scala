@@ -34,12 +34,16 @@ class ExpressionBuilder(builtin: BuiltIn) extends ExpressionFactory with Operato
   }
 
   define(CALL, _.getCall).function(_.getArgumentList) { call =>
-    val function = builtin.functions(call.getFunction)
+    val function: BuiltIn.FuncImpl = builtin.functions.getOrElse(
+      call.getFunction, _ => throw new NotImplementedError(s"no ${call.getFunction} defined in builtin")
+    )
     children => function(children)
   }
 
   define(APPLY, _.getApply).method[Value](_.getFrom, _.getArgumentList) { apply =>
-    val method = builtin.methods(apply.getMethod)
+    val method: BuiltIn.MethodImpl = builtin.methods.getOrElse(
+      apply.getMethod, (_, _) => throw new NotImplementedError(s"no ${apply.getMethod} defined in builtin")
+    )
     (value, args) => method(value, args)
   }
 

@@ -19,3 +19,11 @@ trait CompositorFactory extends Serializable {
 
   def create(code: String): Compositor
 }
+
+object Compositor {
+  def failed(cause: Throwable): Compositor = new Compositor {
+    def composite(args: ValueDict): Future[Value] = {
+      Future.failed(cause)
+    }
+  }
+}
