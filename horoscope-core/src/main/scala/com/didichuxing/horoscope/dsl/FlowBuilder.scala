@@ -11,7 +11,7 @@ import com.didichuxing.horoscope.core.{Compositor, Flow}
 import com.didichuxing.horoscope.runtime.expression.{BuiltIn, Expression, ExpressionBuilder}
 
 import scala.collection.JavaConversions._
-import scala.collection.immutable.SortedSet
+import scala.collection.immutable.{ListMap, SortedSet}
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.duration.Duration
@@ -141,7 +141,7 @@ class FlowBuilder(flowDef: FlowDef)(
   }
 
   class BranchBuilder(
-    blocks: Seq[BlockBuilder], choices: Map[String, (NodeBuilder, BlockBuilder)]
+    blocks: Seq[BlockBuilder], choices: ListMap[String, (NodeBuilder, BlockBuilder)]
   ) extends GenericNodeBuilder[Choice] {
     val isLazy: Boolean = blocks.forall(_.deps.isEmpty)
 
@@ -423,7 +423,7 @@ class FlowBuilder(flowDef: FlowDef)(
 
     def parseBranchStatement(message: FlowDslMessage.BranchStatement): Unit = {
       val blocks = Seq.newBuilder[BlockBuilder]
-      val choices = Map.newBuilder[String, (NodeBuilder, BlockBuilder)]
+      val choices = ListMap.newBuilder[String, (NodeBuilder, BlockBuilder)]
       for (choice <- message.getChoiceList) {
         val block = new BlockBuilder(choice.getAction, Some(this))
         blocks += block
