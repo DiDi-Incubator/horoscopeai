@@ -83,6 +83,7 @@ class ZookeeperFlowStore(curator: CuratorFramework) extends FlowStore with TreeC
     curator.setData().forPath(path, text.getBytes)
   }
 
+  // for unit test
   def load(path: java.nio.file.Path): Unit = {
     val loader = new Consumer[Path] {
       def accept(file: Path): Unit =

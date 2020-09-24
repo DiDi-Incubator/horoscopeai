@@ -124,6 +124,7 @@ predicate
 
 obj
     : ('{') pair (',' pair)* ('}')
+    | '{' '}'
     ;
 
 pair
