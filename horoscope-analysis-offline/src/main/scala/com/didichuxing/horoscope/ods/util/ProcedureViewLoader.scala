@@ -30,7 +30,11 @@ class ProcedureViewLoader(
     val transformed = input.rdd.filter(_.getAs[String](0).length > 0)
       .map { r => EtlUtil.decodeAsProcedureView(r.getAs[String](0))}
     if (inputCount > 0) {
+      // select columns the same as hive table schema: traffic_online.ods_roadnet_procedure_view_log_online
       val output = sparkSession.createDataset(transformed)
+        .select("trace_id", "id",
+          "flow_name", "start_time", "end_time", "choice", "argument",
+          "result", "composite", "fault", "flow_id", "load", "ancestor", "descendants")
         .withColumn("year", lit(year))
         .withColumn("month", lit(month))
         .withColumn("day", lit(day))

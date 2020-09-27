@@ -44,7 +44,7 @@ class ProcedureViewSuite extends FunSuite with Matchers with Logging {
     Value(new JsonParser().parse(s)).as[ProcedureView]
   }
 
-  test("extract procedure view") {
+  test("flow instance perf") {
     val binary = loadData("flow_instance_base64.txt")
     val f = decodeAsFlowInstance(binary)
     // json original size: 16713, json simple size: 6862, base 64 size: 9516, pb bytes size: 7137
@@ -65,6 +65,12 @@ class ProcedureViewSuite extends FunSuite with Matchers with Logging {
     procedures.foreach { p =>
       println(Value(p).toJson)
     }
+  }
+
+  test("extract procedure view from json") {
+    val json = loadData("procedure_view_json.txt")
+    val procedureView = Value(new JsonParser().parse(json)).as[ProcedureView]
+    info(procedureView.toString)
   }
 
 }
