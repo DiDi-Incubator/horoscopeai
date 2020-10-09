@@ -11,6 +11,7 @@ import com.google.gson.{Gson, GsonBuilder}
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
+import scala.util.Try
 
 final class ProcedureViewBuilder {
   import ProcedureViewBuilder._
@@ -83,12 +84,16 @@ final class ProcedureViewBuilder {
   }
 
   private def buildLoad(): Array[Load] = {
-    proc.getLoadList.asScala.map { l =>
-      val ref = l.getReference
-      val k = ref.getName.substring(1)
-      val v = Value(l.getValue).toJson
-      val pid = createProcedureId(fi.getEvent.getTraceId, ref.getEventId, ref.getScopeList.asScala)
-      Load(k, v, pid, ref.getFlowName)
+    proc.getLoadList.asScala.flatMap { l =>
+      if (l.hasReference) {
+        val ref = l.getReference
+        val k = Try(ref.getName.substring(1)).getOrElse(ref.getName)
+        val v = Value(l.getValue).toJson
+        val pid = createProcedureId(fi.getEvent.getTraceId, ref.getEventId, ref.getScopeList.asScala)
+        Some(Load(k, v, pid, ref.getFlowName))
+      } else {
+        None
+      }
     }.toArray
   }
 
