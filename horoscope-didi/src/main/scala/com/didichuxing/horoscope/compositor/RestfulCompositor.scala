@@ -24,21 +24,19 @@ import com.typesafe.config.Config
 import scala.concurrent.{ExecutionContext, Future}
 
 class RestfulCompositor(
-  config: RestfulCompositorConfig
+  restfulConfig: RestfulCompositorConfig
 )(implicit actorSystem: ActorSystem,
   actorMaterializer: ActorMaterializer,
   executionContext: ExecutionContext,
   scheduleExecutor: ScheduledExecutorService
-) extends RestfulClientHelper with Compositor with Logging {
-
-  override val logViewLength: Int = 1024 // 在日志中显示的字符串长度
+) extends RestfulClientHelper(restfulConfig.config) with Compositor with Logging {
 
   override def composite(args: ValueDict): Future[Value] = {
     try {
-      val url = config.getServiceUrl
-      config.getHttpMethod match {
+      val url = restfulConfig.getServiceUrl
+      restfulConfig.getHttpMethod match {
         case "post" =>
-          doPost(CompositorUtil.updateUrlByArguments(url, args))(args.visit(config.getPostBodyKey))
+          doPost(CompositorUtil.updateUrlByArguments(url, args))(args.visit(restfulConfig.getPostBodyKey))
         case "get" =>
           doGet(CompositorUtil.updateUrlByArguments(url, args))
         case m@_ =>

@@ -1,10 +1,13 @@
 package com.didichuxing.horoscope.runtime.expression
 
+import java.util.UUID
+
 import com.didichuxing.horoscope.runtime._
 
 import scala.math.BigDecimal.RoundingMode
 import scala.util.Try
 import Implicits.gson
+import com.google.common.base.CaseFormat
 
 trait DefaultBuiltIn {
 
@@ -13,6 +16,7 @@ trait DefaultBuiltIn {
   implicit val builtin: BuiltIn = defaultBuiltin
 }
 
+// scalastyle:off
 object DefaultBuiltIn {
   val defaultBuiltin: BuiltIn = new BuiltIn.Builder()
     .addFunction("round")(round _)
@@ -43,6 +47,9 @@ object DefaultBuiltIn {
     .addMethod("get_or_else")(getOrElse)
     .addMethod("at_or_else")(atOrElse)
     .addFunction("concat")(concat _)
+    .addMethod("to_lower_camel")(lowerUnderScoreToLowerCamel)
+    .addMethod("to_under_score")(lowerCamelToLowerUnderScore)
+    .addFunction("uuid")(uuid _)
     .build()
 
   def round(d: BigDecimal): BigDecimal = {
@@ -274,4 +281,39 @@ object DefaultBuiltIn {
       Value(List.concat(left.as[ValueList].children, right.as[ValueList].children))
     }
   }
+
+  def uuid(): String = {
+    UUID.randomUUID().toString.replace("-", "")
+  }
+
+  def lowerUnderScoreToLowerCamel(value: Value)(): Value = {
+    value match {
+      case dict: ValueDict =>
+        new SimpleDict(dict.map { case (name, elem) =>
+          val targetKey = CaseFormat.LOWER_UNDERSCORE.to(CaseFormat.LOWER_CAMEL, name)
+          val targetValue = lowerUnderScoreToLowerCamel(elem)
+          (targetKey, targetValue)
+        }.toMap
+        )
+      case list: ValueList =>
+        Value(list.children.map(lowerUnderScoreToLowerCamel(_)))
+      case v: Value => v
+    }
+  }
+
+  def lowerCamelToLowerUnderScore(value: Value)(): Value = {
+    value match {
+      case dict: ValueDict =>
+        new SimpleDict(dict.map { case (name, elem) =>
+          val targetKey = CaseFormat.LOWER_CAMEL.to(CaseFormat.LOWER_UNDERSCORE, name)
+          val targetValue = lowerCamelToLowerUnderScore(elem)
+          (targetKey, targetValue)
+        }.toMap
+        )
+      case list: ValueList =>
+        Value(list.children.map(lowerCamelToLowerUnderScore(_)))
+      case v: Value => v
+    }
+  }
+
 }

@@ -26,7 +26,8 @@ class GraphQLCompositor(url: String, query: String, config: Config)
   (implicit actorSystem: ActorSystem,
     actorMaterializer: ActorMaterializer,
     executionContext: ExecutionContext,
-    scheduleExecutor: ScheduledExecutorService) extends RestfulClientHelper with Compositor {
+    scheduleExecutor: ScheduledExecutorService
+  ) extends RestfulClientHelper(config) with Compositor {
 
   val cacheKey = Try{ config.getString("cache.key") }.getOrElse("")
   val cacheTTL = Try{ config.getInt("cache.ttl") }.getOrElse(60)

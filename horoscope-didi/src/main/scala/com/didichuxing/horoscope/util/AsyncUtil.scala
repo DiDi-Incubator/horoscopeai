@@ -15,7 +15,10 @@ object AsyncUtil extends Logging {
   def retry[T](retryLimits: Long, retryIntervalInMs: Long, retryCount: Long = 1)(
     func: => Future[T])(implicit executor: ExecutionContext, scheduleExecutor: ScheduledExecutorService): Future[T] = {
     require(retryLimits >= 0)
-    func.recoverWith({ case e: Exception =>
+    func.recoverWith({
+      case e: IgnoredException =>
+        Future.failed(e)
+      case e: Exception =>
       if (retryCount <= retryLimits) {
         logging.info(s"do action failed($retryCount/$retryLimits), retrying ${retryIntervalInMs}ms later")
         val p = Promise[T]
@@ -36,4 +39,8 @@ object AsyncUtil extends Logging {
       Await.result(future, duration)
     }
   }
+
+  case class IgnoredException(
+    message: String, cause: Option[Throwable] = None
+  ) extends Exception(message, cause.orNull)
 }

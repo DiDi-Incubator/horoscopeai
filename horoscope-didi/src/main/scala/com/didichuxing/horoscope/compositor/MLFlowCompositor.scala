@@ -16,7 +16,7 @@ import akka.stream.ActorMaterializer
 import akka.util.ByteString
 import com.didichuxing.horoscope.core.{Compositor, CompositorFactory}
 import com.didichuxing.horoscope.runtime.convert.ValueTypeAdapter
-import com.didichuxing.horoscope.runtime.{SimpleList, Value, ValueDict}
+import com.didichuxing.horoscope.runtime.{IgnoredException, SimpleList, Value, ValueDict}
 import com.didichuxing.horoscope.util.Logging
 import com.didichuxing.horoscope.util.AsyncUtil.retry
 import com.google.gson.GsonBuilder
@@ -24,8 +24,10 @@ import com.typesafe.config.Config
 
 import scala.collection.immutable
 import scala.concurrent.{ExecutionContext, Future}
+import scala.util.Try
+import scala.collection.JavaConverters._
 
-class MLFlowCompositor(config: RestfulCompositorConfig)(
+class MLFlowCompositor(restfulConfig: RestfulCompositorConfig)(
   implicit actorSystem: ActorSystem,
   actorMaterializer: ActorMaterializer,
   executionContext: ExecutionContext,
@@ -34,13 +36,22 @@ class MLFlowCompositor(config: RestfulCompositorConfig)(
   implicit val gson = new GsonBuilder()
     .registerTypeHierarchyAdapter(classOf[Value], new ValueTypeAdapter)
     .create()
-  private val logViewLen: Int = 1024
+
+  private val config: Config = restfulConfig.config
+  private val retryNum: Int = Try(config.getInt("client.retry-attempts")).getOrElse(0)
+  private val retryInterval: Int = Try(config.getInt("client.retry-interval")).getOrElse(500)
+  private val nonRetriedErrCode: Set[Int] = Try(
+    config.getIntList("client.ignored-error-code").asScala.map(_.toInt).toSet
+  ).getOrElse(Set())
+
+  // 在日志中显示的字符串长度
+  private val logViewLength: Int = 1024
 
   override def composite(args: ValueDict): Future[Value] = {
     try {
-      val url = config.getServiceUrl
-      val modelName = config.getModelName
-      doPost(url, modelName)(args.visit(config.getPostBodyKey))
+      val url = restfulConfig.getServiceUrl
+      val modelName = restfulConfig.getModelName
+      doPost(url, modelName)(args.visit(restfulConfig.getPostBodyKey))
     } catch {
       case e: Throwable =>
         Future.failed(CompositorException(e.getMessage, Option(e)))
@@ -49,12 +60,12 @@ class MLFlowCompositor(config: RestfulCompositorConfig)(
 
   def doPost(url: String, modelName: String)(postBody: Value): Future[Value] = {
     val request = getMLFlowRequest(postBody, url, modelName)
-    retry[Value](5, 500) {
+    retry[Value](retryNum, retryInterval) {
       Http().singleRequest(request).recover { case e: Exception => e }.flatMap {
         case resp@HttpResponse(code, _, entity, protocol) =>
           if (code.isSuccess()) {
             entity.dataBytes.runFold(ByteString(""))(_ ++ _).map(_.utf8String).map { response =>
-              info(s"Post mlflow request to model: $modelName with body: ${postBody.toJson.take(logViewLen)}, " +
+              info(s"Post mlflow request to model: $modelName with body: ${postBody.toJson.take(logViewLength)}, " +
                 s"got response: $response")
               gson.fromJson(response, classOf[ValueDict])
             }
@@ -63,7 +74,12 @@ class MLFlowCompositor(config: RestfulCompositorConfig)(
               s" failed, with response code: ${code}"
             error(errorStr)
             resp.discardEntityBytes()
-            Future.failed(CompositorException(errorStr))
+
+            if (nonRetriedErrCode.contains(code.intValue())) {
+              Future.failed(IgnoredException(errorStr))
+            } else {
+              Future.failed(CompositorException(errorStr))
+            }
           }
         case e: Throwable =>
           val errorStr = s"Post mlflow request to model: $modelName with body: ${postBody.toJson} failed," +

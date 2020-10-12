@@ -14,7 +14,7 @@ import com.didichuxing.horoscope.compositor.convert.Implicits._
 
 import scala.util.Try
 
-class RestfulCompositorConfig(config: Config, flowConfig: RestfulConfigInFlow) {
+class RestfulCompositorConfig(val config: Config, val flowConfig: RestfulConfigInFlow) {
   //private val compositorConfig = config.getConfig("traffic.intelligence-gateway-service.restful-compositor")
   private val namespace = Try(config.getString("apollo.namespace")).getOrElse("")
   private val configName = Try(config.getString("apollo.config-name")).getOrElse("")
