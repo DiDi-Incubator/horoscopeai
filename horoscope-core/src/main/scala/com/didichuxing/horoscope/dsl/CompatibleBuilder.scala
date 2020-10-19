@@ -151,8 +151,7 @@ class CompatibleBuilder(flowDef: FlowDef)(
       nodes += node
     }
   }
-
-  val expressionBuilder = new ExpressionBuilder(builtin)
+  val expressionBuilder = new ExpressionBuilder(flowDef.getName, builtin)
   implicit def buildExpression(definition: ExprDef): ExpressionHelper =
     new ExpressionHelper(expressionBuilder.build(definition))
 

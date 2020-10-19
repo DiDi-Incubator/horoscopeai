@@ -8,18 +8,82 @@ package com.didichuxing.horoscope.runtime.expression
 
 import akka.http.scaladsl.server.Route
 import com.didichuxing.horoscope.runtime._
+import com.didichuxing.horoscope.runtime.expression.BuiltIn.{FuncImpl, MethodImpl}
+import com.didichuxing.horoscope.runtime.expression.SimpleBuiltIn.Builder
 
 import scala.languageFeature.implicitConversions
 import scala.util.Try
 
-class BuiltIn(
-  val functions: Map[String, BuiltIn.FuncImpl],
-  val methods: Map[String, BuiltIn.MethodImpl]
-) {
-  import BuiltIn._
-  def toBuilder(): BuiltIn.Builder = new Builder().mergeFrom(this)
+trait BuiltIn {
 
-  def api: Route = {
+  def functions: scala.collection.Map[String, BuiltIn.FuncImpl]
+
+  def methods: scala.collection.Map[String, BuiltIn.MethodImpl]
+
+  def api: Route = _.reject()
+
+  def getFunction(namespace: String, name: String): Option[BuiltIn.FuncImpl] = {
+    namespace match {
+      case "" =>
+        Try(functions.filter {
+          case (udfPath, _) =>
+            val (_, udfName) = path2UDFName(udfPath)
+            udfName.equals(name)
+        }.toList.sortBy(_._1.length).last._2).toOption
+      case _: String =>
+        Try(functions.filter {
+          case (udfPath, _) =>
+            val (udfNS, udfName) = path2UDFName(udfPath)
+            namespace.startsWith(udfNS) && udfName.equals(name)
+        }.toList.sortBy(_._1.length).last._2).toOption
+      case _ =>
+        None
+    }
+  }
+
+  def getMethod(namespace: String, name: String): Option[BuiltIn.MethodImpl] = {
+    namespace match {
+      case "" =>
+        Try(methods.filter {
+          case (udfPath, _) =>
+            val (_, udfName) = path2UDFName(udfPath)
+            udfName.equals(name)
+        }.toList.sortBy(_._1.length).last._2).toOption
+      case _: String =>
+        Try(methods.filter {
+          case (udfPath, _) =>
+            val (udfNS, udfName) = path2UDFName(udfPath)
+            namespace.startsWith(udfNS) && udfName.equals(name)
+        }.toList.sortBy(_._1.length).last._2).toOption
+      case _ =>
+        None
+    }
+  }
+
+  def path2UDFName(path: String): (String, String) = {
+    val namePath = path.replaceAll("/(functions|methods)", "").drop(1)
+    val n = namePath.lastIndexOf("/")
+    if (n == -1) {
+      ("/", namePath)
+    } else {
+      (s"/${namePath.take(n + 1)}", namePath.drop(n + 1))
+    }
+  }
+
+}
+
+object BuiltIn {
+  type FuncImpl = ValueList => Value // args => return-value
+
+  type MethodImpl = (Value, ValueList) => Value // (object, args) => return-value
+}
+
+class SimpleBuiltIn(val functions: Map[String, BuiltIn.FuncImpl],
+                    val methods: Map[String, BuiltIn.MethodImpl]) extends BuiltIn {
+
+  def toBuilder(): Builder = new Builder().mergeFrom(this)
+
+  override def api: Route = {
     import akka.http.scaladsl.server.Directives._
     import Implicits._
 
@@ -27,20 +91,18 @@ class BuiltIn(
       path("evaluate") {
         (parameters("expression", "context".as[Value]) |
           formFields("expression", "context".as[Value])) { (expression, context) =>
-            val result = Expression(expression)(this).apply(context.as[ValueDict])
-            complete(result)
+          val result = Expression(expression)(this).apply(context.as[ValueDict])
+          complete(result)
         }
       }
     )
   }
 }
 
-object BuiltIn {
-  type FuncImpl = ValueList => Value // args => return-value
-
-  type MethodImpl = (Value, ValueList) => Value // (object, args) => return-value
+object SimpleBuiltIn {
 
   class Builder {
+
     import shapeless.ops.function._
 
     import scala.reflect.runtime.universe.TypeTag
@@ -50,7 +112,7 @@ object BuiltIn {
     private val methods = Map.newBuilder[String, MethodImpl]
 
     def addFunction(name: String, impl: FuncImpl): Builder = {
-      functions += name -> impl
+      functions += s"/$name" -> impl
       this
     }
 
@@ -71,7 +133,7 @@ object BuiltIn {
     })
 
     def addMethod(name: String, impl: MethodImpl): Builder = {
-      methods += name -> impl
+      methods += s"/$name" -> impl
       this
     }
 
@@ -95,8 +157,8 @@ object BuiltIn {
       ))
     })
 
-    def build(): BuiltIn = {
-      new BuiltIn(functions.result(), methods.result())
+    def build(): SimpleBuiltIn = {
+      new SimpleBuiltIn(functions.result(), methods.result())
     }
 
     def mergeFrom(builtIn: BuiltIn): this.type = {
@@ -105,5 +167,5 @@ object BuiltIn {
       this
     }
   }
-}
 
+}

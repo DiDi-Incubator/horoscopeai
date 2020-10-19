@@ -19,13 +19,7 @@ import scala.concurrent.Future
 import scala.language.implicitConversions
 
 class LocalExecutorEnvironment(implicit ctx: ApplicationContext) extends Environment with Logging {
-  implicit val builtIn: BuiltIn = {
-    if (DefaultBuiltIn.defaultBuiltin != ctx.builtIn) {
-      DefaultBuiltIn.defaultBuiltin.toBuilder().mergeFrom(ctx.builtIn).build()
-    } else {
-      DefaultBuiltIn.defaultBuiltin
-    }
-  }
+  implicit val builtIn: BuiltIn = ctx.builtIn
 
   implicit def buildCompositor(definition: CompositorDef): Compositor = {
     val factoryName = definition.getFactory

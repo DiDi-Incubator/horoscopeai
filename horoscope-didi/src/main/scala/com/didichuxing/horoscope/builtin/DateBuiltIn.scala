@@ -9,12 +9,12 @@ package com.didichuxing.horoscope.builtin
 import java.time.{Duration, Instant, LocalDateTime, ZoneId}
 import java.util.Calendar
 
-import com.didichuxing.horoscope.runtime.expression.BuiltIn
+import com.didichuxing.horoscope.runtime.expression.{BuiltIn, SimpleBuiltIn}
 import com.didichuxing.horoscope.util.{DateUtil, Logging}
 
 object DateBuiltIn extends Logging {
 
-  implicit val builtin: BuiltIn = new BuiltIn.Builder()
+  implicit val builtin: BuiltIn = new SimpleBuiltIn.Builder()
     .addFunction("timestamp")(timestamp _)
     .addFunction("parse_time")(parseTime _)
     .addMethod("hour")(hour)

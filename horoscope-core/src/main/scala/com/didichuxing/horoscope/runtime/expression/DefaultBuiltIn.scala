@@ -18,7 +18,7 @@ trait DefaultBuiltIn {
 
 // scalastyle:off
 object DefaultBuiltIn {
-  val defaultBuiltin: BuiltIn = new BuiltIn.Builder()
+  val defaultBuiltin: SimpleBuiltIn = new SimpleBuiltIn.Builder()
     .addFunction("round")(round _)
     .addFunction("ceil")(ceil _)
     .addFunction("floor")(floor _)

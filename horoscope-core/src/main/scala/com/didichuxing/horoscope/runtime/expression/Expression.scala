@@ -14,9 +14,14 @@ import com.didichuxing.horoscope.runtime._
 import scala.reflect.ClassTag
 
 object Expression {
+
   def apply(text: String)(implicit builtin: BuiltIn): Expression = {
+    apply("/", text)
+  }
+
+  def apply(namespace: String, text: String)(implicit builtin: BuiltIn): Expression = {
     val parser = new ExpressionParser()
-    val builder = new ExpressionBuilder(builtin)
+    val builder = new ExpressionBuilder(namespace, builtin)
 
     val definition = parser.parse(text)
     builder.build(definition)

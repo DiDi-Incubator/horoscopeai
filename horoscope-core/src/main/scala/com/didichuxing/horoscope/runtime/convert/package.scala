@@ -31,4 +31,6 @@ package object convert {
     extends BasicConvertible
       with GsonConvertible
       with ProtobufConvertible
+      with JythonConvertible
+
 }

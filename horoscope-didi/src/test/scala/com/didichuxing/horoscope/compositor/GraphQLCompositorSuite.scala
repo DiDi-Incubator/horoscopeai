@@ -51,9 +51,20 @@ class GraphQLCompositorSuite extends FunSuite with Matchers with BeforeAndAfterA
     }
   }
 
-  test("do post") {
-    val code = "post http://localhost:18089/road-close-v3 demo.graphql"
-    val valueDict = new SimpleDict(Map("user_id" -> Value(100001)))
+  test("do post demo.graphql") {
+    val code =
+      """post http://10.85.128.137/map/warehouse/graphql?apikey=93d27872c74a43a5b014d7c4108ee0ae demo.graphql
+        |header cache.key=order_id;cache.ttl=1
+        |query ($order_id: Long!) {
+        |    order(orderId: $order_id, orderType: GS) {
+        |        orderBase {
+        |            orderId
+        |            driverId
+        |        }
+        |    }
+        |}
+        |""".stripMargin
+    val valueDict = Value(Map[String, Long]("order_id" -> 17695669003487L))
     try {
       info(new GraphQLCompositorFactory(config).create(code).composite(valueDict).await().toString)
     } catch {
@@ -69,27 +80,6 @@ class GraphQLCompositorSuite extends FunSuite with Matchers with BeforeAndAfterA
       "end" -> Value(1596094334)))
     try {
       info(new GraphQLCompositorFactory(config).create(code).composite(valueDict).await().toString)
-    } catch {
-      case e: Throwable =>
-        info(e.getMessage)
-    }
-  }
-
-  test("test isEmpty") {
-    try {
-      val code = "post http://localhost:18089/road-close-v3 demo.graphql"
-      val graph = new GraphQLCompositorFactory(config).create(code).asInstanceOf[GraphQLCompositor]
-      val list = new SimpleList(List())
-      info(s"value: $list, \t type: ${list.getClass},\t empty: ${graph.isEmpty(list)}")
-      val dict1 = new SimpleDict(Map(
-        "a" -> NULL,
-        "b" -> new SimpleList(List(Value(0))),
-        "c" -> Text(""),
-        "d" -> new SimpleDict(Map("k1" -> Text("")))
-      ))
-      info(s"value: $dict1, \t type: ${dict1.getClass},\t empty: ${graph.isEmpty(dict1)}")
-      val dict2 = new SimpleDict(Map("user" -> new SimpleDict(Map("orders" -> new SimpleList(List())))))
-      info(s"value: $dict2, \t type: ${dict2.getClass},\t empty: ${graph.isEmpty(dict2)}")
     } catch {
       case e: Throwable =>
         info(e.getMessage)

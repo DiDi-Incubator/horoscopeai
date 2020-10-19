@@ -56,6 +56,10 @@ class ZkClient(config: Config) {
     curator.usingNamespace(s"$namespace$clusterPath/$ZK_FLOW_PATH")
   }
 
+  def udfCurator(): CuratorFramework = {
+    curator.usingNamespace(s"$namespace$clusterPath/$ZK_UDF_PATH")
+  }
+
   def exist(path: String): Boolean = {
     assert(curator != null, "curator is null")
     val stat = curator.checkExists().forPath(path)

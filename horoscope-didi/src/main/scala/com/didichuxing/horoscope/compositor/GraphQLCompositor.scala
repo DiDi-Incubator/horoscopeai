@@ -22,15 +22,17 @@ import scala.util.{Failure, Success, Try}
 
 case class WrapValue(value: Value = NULL)
 
-class GraphQLCompositor(url: String, query: String, config: Config)
-  (implicit actorSystem: ActorSystem,
-    actorMaterializer: ActorMaterializer,
-    executionContext: ExecutionContext,
-    scheduleExecutor: ScheduledExecutorService
-  ) extends RestfulClientHelper(config) with Compositor {
+class GraphQLCompositor(url: String, queryName: String, queryBody: Option[String], config: Config)
+                       (implicit actorSystem: ActorSystem, actorMaterializer: ActorMaterializer,
+                        executionContext: ExecutionContext, scheduleExecutor: ScheduledExecutorService)
+  extends RestfulClientHelper(config) with Compositor {
 
-  val cacheKey = Try{ config.getString("cache.key") }.getOrElse("")
-  val cacheTTL = Try{ config.getInt("cache.ttl") }.getOrElse(60)
+  val cacheKey = Try {
+    config.getString("cache.key")
+  }.getOrElse("")
+  val cacheTTL = Try {
+    config.getInt("cache.ttl")
+  }.getOrElse(60)
   val cache: Cache[String, WrapValue] = CacheBuilder.newBuilder()
     .maximumSize(100000)
     .concurrencyLevel(128)
@@ -77,10 +79,10 @@ class GraphQLCompositor(url: String, query: String, config: Config)
 
   /** 调用graphql服务查询数据，并根绝查询到的'非空'数据设置cache */
   def graphQuery(args: ValueDict, promise: Promise[Value]): Unit = {
-    val ql = DefaultGraphQLQueryStore.getGraphQL(query)
+    val ql = if (queryBody.isDefined) queryBody else DefaultGraphQLQueryStore.getGraphQL(queryName)
     if (ql.isEmpty) {
-      error(("msg", "query not found"), ("query name", query))
-      promise.failure(new Exception(s"query '${query}' not found"))
+      error(("msg", "query not found"), ("query name", queryName))
+      promise.failure(new NoSuchElementException(s"query '${queryName}' not found"))
     } else {
       debug(("msg", "graphQL query"), ("query", ql.get))
       val body = Value(Map("query" -> ql.get))
@@ -88,13 +90,13 @@ class GraphQLCompositor(url: String, query: String, config: Config)
         case Success(value) =>
           try {
             debug(("msg", "graphQL query data"), ("data", value.toJson))
-            if(value.isInstanceOf[ValueDict]) {
+            if (value.isInstanceOf[ValueDict]) {
               val dict = value.asInstanceOf[ValueDict]
               val errors = dict.at("errors")
-              if(errors.isEmpty) {
+              if (errors.isEmpty) {
                 val queryData = dict.visit("data")
                 debug(s"graphQL query result, queryData: $queryData, dataIsEmpty: ${isEmpty(queryData)}")
-                if (cacheKey.nonEmpty && ! isEmpty(queryData)) {
+                if (cacheKey.nonEmpty && !isEmpty(queryData)) {
                   val keyValue = getKeyValue(args)
                   cache.put(keyValue, WrapValue(queryData))
                   debug(s"put entry to cache, key: $keyValue, data: $queryData")
@@ -124,13 +126,13 @@ class GraphQLCompositor(url: String, query: String, config: Config)
     case NULL => true
     case v: Binary => v.length == 0
     case v: ValueList => {
-      ! v.iterator.exists(vl => {
-        ! isEmpty(vl._2)
+      !v.iterator.exists(vl => {
+        !isEmpty(vl._2)
       })
     }
     case v: ValueDict => {
-      ! v.iterator.exists(vl => {
-        ! isEmpty(vl._2)
+      !v.iterator.exists(vl => {
+        !isEmpty(vl._2)
       })
     }
     case _ => false
@@ -139,31 +141,42 @@ class GraphQLCompositor(url: String, query: String, config: Config)
 }
 
 class GraphQLCompositorFactory(compositorConfig: Config)
-  (implicit actorSystem: ActorSystem,
-    actorMaterializer: ActorMaterializer,
-    executionContext: ExecutionContext,
-    scheduleExecutor: ScheduledExecutorService) extends CompositorFactory with Logging{
+                              (implicit actorSystem: ActorSystem,
+                               actorMaterializer: ActorMaterializer,
+                               executionContext: ExecutionContext,
+                               scheduleExecutor: ScheduledExecutorService) extends CompositorFactory with Logging {
 
   override def name(): String = {
     "graphql"
   }
 
   override def create(code: String): Compositor = {
-    val flowConfig = CompositorUtil.parseConfigFromFlow(code)
+    val lines = code.lines
+    //line 1: post url path
+    val path = lines.take(1).mkString
+    val flowConfig = CompositorUtil.parseConfigFromFlow(path)
     val restfulConfig = new RestfulCompositorConfig(compositorConfig, flowConfig)
     val url = restfulConfig.getServiceUrl
-    val query = restfulConfig.getModelName
-    // cache config Parse
-    val config = compositorConfig.withFallback(parseCacheConfig(code))
-    new GraphQLCompositor(url, query, config)
-  }
-
-  def parseCacheConfig(code: String): Config = {
-    val codes = code.replaceAll("\\$|\\{|\\}", "").split("\n").filter(el => {
-      val line = el.toLowerCase()
-      ! (line.startsWith("post") || line.startsWith("get"))
-    })
-    ConfigFactory.parseString(codes.mkString("\n"))
+    val queryName = Try(restfulConfig.getModelName).getOrElse("")
+    //line 2: header config
+    val body = lines.toList
+    if (body.size == 0) {
+      new GraphQLCompositor(url, queryName, None, compositorConfig)
+    } else {
+      val (graphQLConfig, queryBody) = if (body.head.startsWith("header")) {
+        (
+          ConfigFactory.parseString("{" + body.head.replace("header", "").trim.split(";").mkString("\n") + "}"),
+          if (body.tail.size == 0) None else Some(body.tail.mkString("\n"))
+        )
+      } else {
+        (
+          ConfigFactory.empty(),
+          if (body.size == 0) None else Some(body.mkString("\n"))
+        )
+      }
+      val config = compositorConfig.withFallback(graphQLConfig)
+      new GraphQLCompositor(url, queryName, queryBody, config)
+    }
   }
 
 }
@@ -185,7 +198,7 @@ object DefaultGraphQLQueryStore extends GraphQLQueryStore with Logging {
       filename -> content
     }).toMap
 
-  override def getGraphQL(query: String): Option[String] = {
-    graphQLList.get(query)
+  override def getGraphQL(queryName: String): Option[String] = {
+    graphQLList.get(queryName)
   }
 }

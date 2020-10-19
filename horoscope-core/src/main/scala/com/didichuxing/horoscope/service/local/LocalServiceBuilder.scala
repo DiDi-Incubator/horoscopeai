@@ -98,8 +98,6 @@ class LocalServiceBuilder extends ServiceBuilder with Logging {
     }
     if (ctx.builtIn == null) {
       ctx.withBuiltin(DefaultBuiltIn.defaultBuiltin)
-    } else {
-      ctx.withBuiltin(DefaultBuiltIn.defaultBuiltin.toBuilder().mergeFrom(ctx.builtIn).build())
     }
     if (ctx.sourceExecutionContext == null) {
       ctx.withSourceExecutionContext(DefaultSourceExecutionContext(ctx.config))

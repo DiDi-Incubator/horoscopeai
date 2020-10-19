@@ -7,6 +7,8 @@ import com.didichuxing.horoscope.service.resource.{ResourceManager, ZkClient}
 import com.didichuxing.horoscope.util.{Logging, SystemLog}
 import com.typesafe.config.{Config, ConfigFactory, ConfigRenderOptions}
 
+import scala.util.Try
+
 /**
  * namespace
  * | -- cluster1(config)
@@ -30,11 +32,11 @@ class ZookeeperClusterStore(zkClient: ZkClient, rm: ResourceManager) extends Clu
     zkClient.getChild("/").map(cluster => {
       val configOpt = zkClient.getData(s"/$cluster")
       if (configOpt.isDefined) {
-        ConfigFactory.parseString(configOpt.get)
+        Try(ConfigFactory.parseString(configOpt.get)).getOrElse(ConfigFactory.empty())
       } else {
         ConfigFactory.empty()
       }
-    })
+    }).filter(c => !c.isEmpty)
   }
 
   override def getHosts(): Seq[String] = {

@@ -19,7 +19,7 @@ import com.didichuxing.horoscope.core.FlowDslMessage.{CompositorDef, FlowDef}
 import com.didichuxing.horoscope.core.{Compositor, Flow, FlowStore}
 import com.didichuxing.horoscope.dsl.FlowCompiler
 import com.didichuxing.horoscope.runtime.{Value, ValueDict}
-import com.didichuxing.horoscope.runtime.expression.BuiltIn
+import com.didichuxing.horoscope.runtime.expression.{BuiltIn, SimpleBuiltIn}
 import com.didichuxing.horoscope.util.Logging
 import org.apache.curator.framework.CuratorFramework
 import org.apache.curator.framework.recipes.cache.{TreeCache, TreeCacheEvent, TreeCacheListener}
@@ -232,7 +232,7 @@ object ZookeeperFlowStore {
     }
 
     // scalastyle:off
-    implicit val builtin: BuiltIn = new BuiltIn(Map.empty, Map.empty)
+    implicit val builtin: BuiltIn = new SimpleBuiltIn(Map.empty, Map.empty)
 
     Flow(FlowCompiler.compile(text))
   }

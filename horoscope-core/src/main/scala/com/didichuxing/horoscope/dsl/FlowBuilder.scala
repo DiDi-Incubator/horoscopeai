@@ -35,7 +35,7 @@ class FlowBuilder(flowDef: FlowDef)(
       }).get)
     ).toMap
   }
-  private val expressionBuilder = new ExpressionBuilder(builtin)
+  private val expressionBuilder = new ExpressionBuilder(flowDef.getName, builtin)
 
   private val usedNames: mutable.Set[String] = mutable.Set()
 

@@ -11,7 +11,8 @@ import com.didichuxing.horoscope.runtime._
 
 import scala.util.Try
 
-class ExpressionBuilder(builtin: BuiltIn) extends ExpressionFactory with Operators {
+class ExpressionBuilder(namespace: String, builtin: BuiltIn) extends ExpressionFactory with Operators {
+
   import FlowDslMessage.ExprDef.ExpressionCase._
 
   import scala.collection.JavaConversions._
@@ -34,16 +35,14 @@ class ExpressionBuilder(builtin: BuiltIn) extends ExpressionFactory with Operato
   }
 
   define(CALL, _.getCall).function(_.getArgumentList) { call =>
-    val function: BuiltIn.FuncImpl = builtin.functions.getOrElse(
-      call.getFunction, _ => throw new NotImplementedError(s"no ${call.getFunction} defined in builtin")
-    )
+    val function: BuiltIn.FuncImpl = builtin.getFunction(namespace, call.getFunction)
+      .getOrElse((_: ValueList) => throw new NotImplementedError(s"no ${call.getFunction} defined in builtin"))
     children => function(children)
   }
 
   define(APPLY, _.getApply).method[Value](_.getFrom, _.getArgumentList) { apply =>
-    val method: BuiltIn.MethodImpl = builtin.methods.getOrElse(
-      apply.getMethod, (_, _) => throw new NotImplementedError(s"no ${apply.getMethod} defined in builtin")
-    )
+    val method: BuiltIn.MethodImpl = builtin.getMethod(namespace, apply.getMethod)
+      .getOrElse((_, _) => throw new NotImplementedError(s"no ${apply.getMethod} defined in builtin"))
     (value, args) => method(value, args)
   }
 

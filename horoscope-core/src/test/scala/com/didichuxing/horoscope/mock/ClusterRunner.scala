@@ -7,6 +7,7 @@
 package com.didichuxing.horoscope.mock
 
 import com.didichuxing.horoscope.core.{Horoscope, Sources}
+import com.didichuxing.horoscope.runtime.expression.{DefaultBuiltIn, ZookeeperJythonBuiltIn}
 import com.didichuxing.horoscope.service.cluster.FlowClient
 import com.didichuxing.horoscope.service.resource.ZkClient
 import com.didichuxing.horoscope.service.source.{EventBuilders, HttpSourceFactory}
@@ -22,12 +23,14 @@ class ClusterRunner extends Logging {
     //init traceStore
     val zkClient = new ZkClient(config)
     val flowStore = new ZookeeperFlowStore(zkClient.flowsCurator())
+    val zkBuiltIn = new ZookeeperJythonBuiltIn(zkClient.udfCurator()).mergeFrom(DefaultBuiltIn.defaultBuiltin)
     val traceStore = new RedisTraceStore
     traceStore.start(config)
     //init service builder
     val serviceBuilder = Horoscope
       .newClusterService()
       .withConfig(config)
+      .withBuiltin(zkBuiltIn)
       .withZkClient(zkClient)
       .withFlowStore(flowStore)
       .withTraceStore(traceStore)

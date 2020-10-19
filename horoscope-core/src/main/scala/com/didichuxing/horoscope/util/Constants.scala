@@ -71,4 +71,8 @@ object Constants {
    * zk集群选主路径
    */
   val ZK_CLUSTER_PATH = "cluster"
+  /**
+   * jython脚本
+   */
+  val ZK_UDF_PATH = "udf"
 }
