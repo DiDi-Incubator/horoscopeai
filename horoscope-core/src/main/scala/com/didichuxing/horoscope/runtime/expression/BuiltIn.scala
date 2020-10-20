@@ -112,7 +112,8 @@ object SimpleBuiltIn {
     private val methods = Map.newBuilder[String, MethodImpl]
 
     def addFunction(name: String, impl: FuncImpl): Builder = {
-      functions += s"/$name" -> impl
+      val path = if (name.startsWith("/")) name else s"/$name"
+      functions += path -> impl
       this
     }
 
@@ -133,7 +134,8 @@ object SimpleBuiltIn {
     })
 
     def addMethod(name: String, impl: MethodImpl): Builder = {
-      methods += s"/$name" -> impl
+      val path = if (name.startsWith("/")) name else s"/$name"
+      methods += path -> impl
       this
     }
 
