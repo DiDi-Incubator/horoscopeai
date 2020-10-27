@@ -492,7 +492,7 @@ class FlowInterpreter(
           }
 
           log.setCompositor(composite.compositor)
-          log.setArgument(table.as[FlowValue])
+          if (!composite.isTransient) log.setArgument(table.as[FlowValue])
           log.setStartTime(System.currentTimeMillis())
           log.setBatchSize(table.size)
 
@@ -515,7 +515,7 @@ class FlowInterpreter(
 
     override protected def onComplete: Handle = super.onComplete orElse {
       case Success(value) =>
-        log.setResult(value.as[FlowValue])
+        if (!composite.isTransient) log.setResult(value.as[FlowValue])
         procedure.log.putComposite(name, log.build())
     }
   }
