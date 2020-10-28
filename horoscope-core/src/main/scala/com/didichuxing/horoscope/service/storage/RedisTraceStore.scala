@@ -202,7 +202,7 @@ class RedisTraceStore(executionContext: ExecutionContext = null) extends Abstrac
         getSchedulerKey(source, getSlot(traceId, slotCount))
       }).map {
         case (key, events) => {
-          events.foreach(e => {
+          events.distinct.foreach(e => {
             val timestamp = if (!e.hasScheduledTimestamp || e.getScheduledTimestamp == 0) {
               System.currentTimeMillis()
             } else {

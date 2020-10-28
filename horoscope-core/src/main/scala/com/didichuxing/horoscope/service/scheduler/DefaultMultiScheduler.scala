@@ -61,6 +61,10 @@ class DefaultMultiScheduler(implicit ctx: ApplicationContext) extends MultiSched
                     if (isRun.get()) {
                       val successEvents = poll(source, eventBus, slot, timestamp, limit)
                       val count = traceStore.commitSchedulerEvents(source, slot, successEvents)
+                      if (count != successEvents.size) {
+                        error(("msg", "multi scheduler commit error"),
+                          ("success size", successEvents.size), ("commit size", count))
+                      }
                       commitCount += count
                     }
                   }
@@ -106,6 +110,10 @@ class DefaultMultiScheduler(implicit ctx: ApplicationContext) extends MultiSched
         successEvents.appendAll(successes.filter(e => e != null))
       }
       val endTime = System.currentTimeMillis()
+      if (events.size != successEvents.size) {
+        error(("msg", "multi scheduler commit error"),
+          ("poll size", events.size), ("process size", successEvents.size))
+      }
       debug(("msg", "multi scheduler poll success"), ("source", name), ("slot", slot), ("timestamp", timestamp),
         ("limit", max), ("count", events.size), ("proc_time", s"${endTime - startTime}ms"))
       successEvents.toList
