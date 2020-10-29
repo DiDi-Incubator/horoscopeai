@@ -103,7 +103,7 @@ class RedisTraceStore(executionContext: ExecutionContext = null) extends Abstrac
       events.groupBy(event => {
         val traceId = event.getTraceId
         getMailboxKey(source, getSlot(traceId, slotCount))
-      }).map {
+      }).foreach {
         case (key, events) => {
           val flowEvents = mutable.Map[Array[Byte], Array[Byte]]()
           events.foreach(event => {
@@ -200,9 +200,9 @@ class RedisTraceStore(executionContext: ExecutionContext = null) extends Abstrac
       events.groupBy(event => {
         val traceId = event.getTraceId
         getSchedulerKey(source, getSlot(traceId, slotCount))
-      }).map {
+      }).foreach {
         case (key, events) => {
-          events.distinct.foreach(e => {
+          events.foreach(e => {
             val timestamp = if (!e.hasScheduledTimestamp || e.getScheduledTimestamp == 0) {
               System.currentTimeMillis()
             } else {
@@ -234,7 +234,7 @@ class RedisTraceStore(executionContext: ExecutionContext = null) extends Abstrac
       pipeline.sync()
       val events = ListBuffer[FlowEvent]()
       responses.foreach(resp => {
-        resp._2.get().map(e => {
+        resp._2.get().foreach(e => {
           val flowEvent = FlowRuntimeMessage.FlowEvent.parseFrom(e._2)
           events.append(flowEvent)
         })

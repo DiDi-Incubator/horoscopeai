@@ -37,59 +37,61 @@ class DefaultMultiScheduler(implicit ctx: ApplicationContext) extends MultiSched
   override def start(source: String, params: Config, eventBus: EventBus): Unit = {
     val schEnable = Try(params.getBoolean("scheduler.enable")).getOrElse(false)
     if (schEnable) {
-      val resourceManager = ctx.resourceManager
-      val isRun = getRunStatus(source)
-      if (isRun.compareAndSet(false, true)) {
-        ec.execute(new Runnable {
-          override def run(): Unit = {
-            SystemLog.create()
-            while (isRun.get()) {
-              try {
-                val backpress = Try(params.getInt("backpress.permits")).getOrElse(100)
-                val limit = min(10, max(1, backpress / 5))
-                val serverCount = if (resourceManager == null) 1 else resourceManager.getParticipants().size
-                val slotRange = if (resourceManager == null) {
-                  debug(("msg", "local mode"))
-                  Some(SlotRange(0, 1))
-                } else {
-                  resourceManager.getSlotRange(resourceManager.local())
-                }
-                if (slotRange.isDefined) {
-                  val timestamp = System.currentTimeMillis()
-                  var commitCount: Long = 0
-                  for (slot <- slotRange.get.begin until slotRange.get.end) {
-                    if (isRun.get()) {
-                      val successEvents = poll(source, eventBus, slot, timestamp, limit)
-                      val count = traceStore.commitSchedulerEvents(source, slot, successEvents)
-                      if (count != successEvents.size) {
-                        error(("msg", "multi scheduler commit error"),
-                          ("success size", successEvents.size), ("commit size", count))
-                      }
-                      commitCount += count
-                    }
-                  }
-                  val endTime = System.currentTimeMillis()
-                  val procTime = endTime - timestamp
-                  info(("msg", "multi scheduler poll commit"), ("source", source), ("slotRange", slotRange),
-                    ("timestamp", timestamp), ("limit", limit), ("count", commitCount), ("proc_time", s"${procTime}ms"))
-                  val factor = Try(params.getInt("scheduler.factor")).getOrElse(3)
-                  val interval = slotCount / serverCount / factor
-                  if (procTime < interval) {
-                    Thread.sleep(interval - procTime)
-                  }
-                } else {
-                  error(("msg", "multi scheduler slot range error"), ("source", source))
-                }
-              } catch {
-                case iex: InterruptedException =>
-                  stop(source)
-                case ex: Throwable =>
-                  error(("msg", "multi scheduler exception"), ("ex", ex.getMessage))
-              }
+      ec.execute(new Executor(getRunStatus(source), source, params, eventBus))
+    }
+  }
+
+  class Executor(status: AtomicBoolean, source: String, params: Config, eventBus: EventBus)
+                (implicit ctx: ApplicationContext) extends Runnable {
+    override def run(): Unit = {
+      SystemLog.create()
+      if (status.compareAndSet(false, true)) {
+        val resourceManager = ctx.resourceManager
+        while (status.get()) {
+          try {
+            val backpress = Try(params.getInt("backpress.permits")).getOrElse(100)
+            val limit = min(10, max(1, backpress / 5))
+            val serverCount = if (resourceManager == null) 1 else resourceManager.getParticipants().size
+            val slotRange = if (resourceManager == null) {
+              debug(("msg", "local mode"))
+              Some(SlotRange(0, 1))
+            } else {
+              resourceManager.getSlotRange(resourceManager.local())
             }
-            info(("msg", "multi scheduler stop"), ("source", source))
+            if (slotRange.isDefined) {
+              val timestamp = System.currentTimeMillis()
+              var commitCount: Long = 0
+              for (slot <- slotRange.get.begin until slotRange.get.end) {
+                if (status.get()) {
+                  val successEvents = poll(source, eventBus, slot, timestamp, limit)
+                  val count = traceStore.commitSchedulerEvents(source, slot, successEvents)
+                  if (count != successEvents.size) {
+                    warn(("msg", "multi scheduler commit error"),
+                      ("success size", successEvents.size), ("commit size", count))
+                  }
+                  commitCount += count
+                }
+              }
+              val endTime = System.currentTimeMillis()
+              val procTime = endTime - timestamp
+              info(("msg", "multi scheduler poll commit"), ("source", source), ("slotRange", slotRange),
+                ("timestamp", timestamp), ("limit", limit), ("count", commitCount), ("proc_time", s"${procTime}ms"))
+              val factor = Try(params.getInt("scheduler.factor")).getOrElse(3)
+              val interval = slotCount / serverCount / factor
+              if (procTime < interval) {
+                Thread.sleep(interval - procTime)
+              }
+            } else {
+              error(("msg", "multi scheduler slot range error"), ("source", source))
+            }
+          } catch {
+            case iex: InterruptedException =>
+              stop(source)
+            case ex: Throwable =>
+              error(("msg", "multi scheduler exception"), ("ex", ex.getMessage))
           }
-        })
+        }
+        info(("msg", "multi scheduler stop"), ("source", source))
       } else {
         error(("msg", "multi scheduler is running"), ("source", source))
       }
@@ -111,7 +113,7 @@ class DefaultMultiScheduler(implicit ctx: ApplicationContext) extends MultiSched
       }
       val endTime = System.currentTimeMillis()
       if (events.size != successEvents.size) {
-        error(("msg", "multi scheduler commit error"),
+        warn(("msg", "multi scheduler poll error"),
           ("poll size", events.size), ("process size", successEvents.size))
       }
       debug(("msg", "multi scheduler poll success"), ("source", name), ("slot", slot), ("timestamp", timestamp),
