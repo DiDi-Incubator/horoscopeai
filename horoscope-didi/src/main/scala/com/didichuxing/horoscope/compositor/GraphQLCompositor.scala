@@ -36,7 +36,7 @@ class GraphQLCompositor(url: String, queryName: String, queryBody: Option[String
   val cache: Cache[String, WrapValue] = CacheBuilder.newBuilder()
     .maximumSize(100000)
     .concurrencyLevel(128)
-    .expireAfterAccess(cacheTTL, TimeUnit.SECONDS)
+    .expireAfterWrite(cacheTTL, TimeUnit.SECONDS)
     .build()
 
   override def composite(args: ValueDict): Future[Value] = {
