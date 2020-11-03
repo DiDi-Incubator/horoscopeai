@@ -61,7 +61,7 @@ trait BuiltIn {
   }
 
   def path2UDFName(path: String): (String, String) = {
-    val namePath = path.replaceAll("/(functions|methods)", "").drop(1)
+    val namePath = path.replaceAll("(.*)/(functions|methods)", "").drop(1)
     val n = namePath.lastIndexOf("/")
     if (n == -1) {
       ("/", namePath)

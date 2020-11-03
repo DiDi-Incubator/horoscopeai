@@ -458,8 +458,13 @@ class FlowInterpreter(
           log.setStartTime(System.currentTimeMillis())
           if (!composite.isTransient) log.setArgument(argument.as[FlowValue])
 
+          val beginTime = System.currentTimeMillis()
           future = composite.impl.composite(argument)
           future onComplete { result =>
+            val endTime = System.currentTimeMillis()
+            logInfo(("msg", "composite complete"), ("eventId", eventId),
+              ("name", composite.name), ("compositor", composite.compositor),
+              ("proc_time", s"${endTime - beginTime}ms"))
             self ! CompositeResult(this, result)
           }
         }

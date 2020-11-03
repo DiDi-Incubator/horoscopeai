@@ -299,9 +299,12 @@ class CompatibleInterpreter(
           val args = composite.argument(Value(context)).as[ValueDict]
           logDebug(("msg", "composite begin"), ("eventId", eventId),
             ("name", composite.name), ("compositor", composite.compositor))
+          val beginTime = System.currentTimeMillis()
           composite.impl.composite(args) onComplete { result =>
-            logDebug(("msg", "composite complete"), ("eventId", eventId),
-              ("name", composite.name), ("compositor", composite.compositor))
+            val endTime = System.currentTimeMillis()
+            logInfo(("msg", "composite complete"), ("eventId", eventId),
+              ("name", composite.name), ("compositor", composite.compositor),
+              ("proc_time", s"${endTime - beginTime}ms"))
             self ! CompositeResult(composite, result)
           }
         } catch {
