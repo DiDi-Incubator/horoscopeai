@@ -140,7 +140,7 @@ class FlowInterpreter(
 
     val log: FlowInstance.Procedure.Builder = {
       val procedureCount = Main.instance.getProcedureCount
-      require(procedureCount <= 1024, s"procedure count exceeds $procedureCount")
+      require(procedureCount <= 128, s"procedure count exceeds $procedureCount")
 
       Main.instance.addProcedureBuilder()
         .setFlowId(flow.id)

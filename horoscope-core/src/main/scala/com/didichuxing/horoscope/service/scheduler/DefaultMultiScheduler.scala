@@ -6,9 +6,8 @@
 
 package com.didichuxing.horoscope.service.scheduler
 
-import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.{Callable, Future}
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.function.Function
 
 import com.didichuxing.horoscope.core.EventBus
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowEvent
@@ -18,6 +17,7 @@ import com.didichuxing.horoscope.util.Utils.getClusterSlotCount
 import com.didichuxing.horoscope.util.{Logging, SystemLog}
 import com.typesafe.config.Config
 
+import scala.collection.concurrent.TrieMap
 import scala.collection.mutable.ListBuffer
 import scala.math._
 import scala.util.Try
@@ -31,20 +31,23 @@ class DefaultMultiScheduler(implicit ctx: ApplicationContext) extends MultiSched
 
   val ec = ctx.sourceExecutionContext.getExecutionContext()
   val traceStore = ctx.traceStore
-  val runStatus = new ConcurrentHashMap[String, AtomicBoolean]()
+  val runFutures = TrieMap.empty[String, Future[Unit]]
   val slotCount = getClusterSlotCount(ctx.config)
 
   override def start(source: String, params: Config, eventBus: EventBus): Unit = {
     val schEnable = Try(params.getBoolean("scheduler.enable")).getOrElse(false)
     if (schEnable) {
-      ec.execute(new Executor(getRunStatus(source), source, params, eventBus))
+      this.synchronized {
+        runFutures.update(source, ec.submit(new Executor(source, params, eventBus)))
+      }
     }
   }
 
-  class Executor(status: AtomicBoolean, source: String, params: Config, eventBus: EventBus)
-                (implicit ctx: ApplicationContext) extends Runnable {
-    override def run(): Unit = {
+  class Executor(source: String, params: Config, eventBus: EventBus)
+                (implicit ctx: ApplicationContext) extends Callable[Unit] {
+    override def call(): Unit = {
       SystemLog.create()
+      val status = new AtomicBoolean(false)
       if (status.compareAndSet(false, true)) {
         val resourceManager = ctx.resourceManager
         while (status.get()) {
@@ -86,7 +89,8 @@ class DefaultMultiScheduler(implicit ctx: ApplicationContext) extends MultiSched
             }
           } catch {
             case iex: InterruptedException =>
-              stop(source)
+              val success = status.compareAndSet(true, false)
+              info(("msg", "multi scheduler interrupted"), ("ex", iex.getMessage), ("success", success))
             case ex: Throwable =>
               error(("msg", "multi scheduler exception"), ("ex", ex.getMessage))
           }
@@ -99,7 +103,20 @@ class DefaultMultiScheduler(implicit ctx: ApplicationContext) extends MultiSched
   }
 
   override def stop(source: String): Unit = {
-    getRunStatus(source).compareAndSet(true, false)
+    this.synchronized {
+      try {
+        val f = runFutures.get(source).get
+        if (!f.isDone && !f.isCancelled) {
+          val cancelSuccess = f.cancel(true)
+          info(("msg", "multi scheduler cancel"), ("source", source), ("cancel", cancelSuccess))
+        } else {
+          info(("msg", "multi scheduler has stop"), ("source", source))
+        }
+      } catch {
+        case ex: Throwable =>
+          error(("msg", "multi scheduler stop error"), ("ex", ex))
+      }
+    }
   }
 
   private def poll(name: String, eventBus: EventBus, slot: Int, timestamp: Long, max: Int): List[FlowEvent] = {
@@ -125,14 +142,6 @@ class DefaultMultiScheduler(implicit ctx: ApplicationContext) extends MultiSched
           ("ex", ex.getMessage))
         successEvents.toList
     }
-  }
-
-  private def getRunStatus(source: String): AtomicBoolean = {
-    runStatus.computeIfAbsent(source, new Function[String, AtomicBoolean]() {
-      override def apply(t: String): AtomicBoolean = {
-        new AtomicBoolean(false)
-      }
-    })
   }
 
 }
