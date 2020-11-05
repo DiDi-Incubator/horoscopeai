@@ -13,7 +13,7 @@ import com.didichuxing.horoscope.core.EventBus
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowEvent
 import com.didichuxing.horoscope.service.ApplicationContext
 import com.didichuxing.horoscope.service.resource.SlotRange
-import com.didichuxing.horoscope.util.Utils.getClusterSlotCount
+import com.didichuxing.horoscope.util.Utils.{getClusterSlotCount, printStackTraceStr}
 import com.didichuxing.horoscope.util.{Logging, SystemLog}
 import com.typesafe.config.Config
 
@@ -50,7 +50,7 @@ class DefaultMultiScheduler(implicit ctx: ApplicationContext) extends MultiSched
       val status = new AtomicBoolean(false)
       if (status.compareAndSet(false, true)) {
         val resourceManager = ctx.resourceManager
-        while (status.get()) {
+        while (status.get() && !Thread.currentThread().isInterrupted) {
           try {
             val backpress = Try(params.getInt("backpress.permits")).getOrElse(100)
             val limit = min(10, max(1, backpress / 5))
@@ -139,7 +139,7 @@ class DefaultMultiScheduler(implicit ctx: ApplicationContext) extends MultiSched
     } catch {
       case ex: Throwable =>
         error(("msg", "multi scheduler error"), ("source", name), ("slot", slot), ("timestamp", timestamp),
-          ("ex", ex.getMessage))
+          ("ex", printStackTraceStr(ex)))
         successEvents.toList
     }
   }
