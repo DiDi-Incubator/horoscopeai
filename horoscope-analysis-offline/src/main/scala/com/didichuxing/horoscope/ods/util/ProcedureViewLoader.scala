@@ -4,6 +4,7 @@
  */
 
 package com.didichuxing.horoscope.ods.util
+import com.didichuxing.horoscope.ods.ProcedureView
 import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.storage.StorageLevel
 
@@ -26,10 +27,23 @@ class ProcedureViewLoader(
     val input = sparkSession.read.format("text").load(inputPath)
     input.persist(StorageLevel.MEMORY_AND_DISK)
     val inputCount = input.count()
-    println(s"Input count ${inputCount}")
-    val transformed = input.rdd.filter(_.getAs[String](0).length > 0)
-      .map { r => EtlUtil.decodeAsProcedureView(r.getAs[String](0))}
-    if (inputCount > 0) {
+    println(s"Input lines ${inputCount}")
+    val transformed = input.rdd.filter{r =>
+      val str = r.getAs[String](0).trim
+      str.length > 0 && str.startsWith("{") && str.endsWith("}")
+    }.map{ r =>
+      try {
+        EtlUtil.decodeAsProcedureView(r.getAs[String](0).trim)
+      } catch {
+        case e: Throwable =>
+          print(e.toString)
+          ProcedureView()
+      }
+    }.filter(v => v.trace_id.length > 0 && v.flow_name.length > 0)
+    transformed.persist(StorageLevel.MEMORY_AND_DISK)
+    val validCount = transformed.count()
+    println(s"Input lines ${inputCount}, transformed valid ${validCount}")
+    if (validCount > 0) {
       // select columns the same as hive table schema: traffic_online.ods_roadnet_procedure_view_log_online
       val output = sparkSession.createDataset(transformed)
         .select("trace_id", "id",
@@ -41,7 +55,8 @@ class ProcedureViewLoader(
         .withColumn("hour", lit(hour))
       output.printSchema()
       output.write.mode("overwrite").insertInto(targetTable)
-      println(s"Output rows ${output.count()}, time taken ${System.currentTimeMillis() - startTime} ms")
+      println(s"Input lines ${inputCount}, transformed valid ${validCount}, " +
+        s"output rows ${output.count()}, time taken ${System.currentTimeMillis() - startTime} ms")
     } else {
       println(s"Input ${inputPath} is empty")
     }

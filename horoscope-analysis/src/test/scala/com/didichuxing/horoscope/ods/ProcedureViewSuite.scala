@@ -68,9 +68,10 @@ class ProcedureViewSuite extends FunSuite with Matchers with Logging {
   }
 
   test("extract procedure view from json") {
+    import Implicits._
     val json = loadData("procedure_view_json.txt")
     val procedureView = Value(new JsonParser().parse(json)).as[ProcedureView]
-    info(procedureView.toString)
+    info(procedureView.toJson().size.toString)
   }
 
 }

@@ -99,6 +99,16 @@
                 <artifactId>hadoop-common</artifactId>
                 <scope>provided</scope>
             </dependency>
+            <dependency>
+                <groupId>org.python</groupId>
+                <artifactId>jython</artifactId>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.nd4j</groupId>
+                <artifactId>nd4j-native-platform</artifactId>
+                <scope>provided</scope>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 

@@ -46,13 +46,13 @@ case class Load(
  * @param descendants How, children procedure id list, such as include and schedule flow
  */
 case class ProcedureView(
-  id: String,
-  trace_id: String,
-  flow_name: String,
-  flow_id: String,
-  start_time: Long,
-  end_time: Long,
-  choice: Seq[String],
+  id: String = "",
+  trace_id: String = "",
+  flow_name: String = "",
+  flow_id: String = "",
+  start_time: Long = 0L,
+  end_time: Long = 0L,
+  choice: Seq[String] = Seq.empty,
   argument: Map[String, String] = Map.empty,
   result: Map[String, String] = Map.empty,
   composite: Map[String, Composite] = Map.empty,
