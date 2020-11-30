@@ -92,7 +92,7 @@ class DefaultMultiScheduler(implicit ctx: ApplicationContext) extends MultiSched
               val success = status.compareAndSet(true, false)
               info(("msg", "multi scheduler interrupted"), ("ex", iex.getMessage), ("success", success))
             case ex: Throwable =>
-              error(("msg", "multi scheduler exception"), ("ex", ex.getMessage))
+              error(("msg", "multi scheduler exception"), ("source", source), ("ex", printStackTraceStr(ex)))
           }
         }
         info(("msg", "multi scheduler stop"), ("source", source))
@@ -121,27 +121,20 @@ class DefaultMultiScheduler(implicit ctx: ApplicationContext) extends MultiSched
 
   private def poll(name: String, eventBus: EventBus, slot: Int, timestamp: Long, max: Int): List[FlowEvent] = {
     val successEvents = ListBuffer[FlowEvent]()
-    try {
-      val startTime = System.currentTimeMillis()
-      val events = traceStore.pollSchedulerEvents(name, slot, timestamp, max)
-      if (events.size > 0) {
-        val successes = eventBus.doProcess(events.toList)
-        successEvents.appendAll(successes.filter(e => e != null))
-      }
-      val endTime = System.currentTimeMillis()
-      if (events.size != successEvents.size) {
-        warn(("msg", "multi scheduler poll error"),
-          ("poll size", events.size), ("process size", successEvents.size))
-      }
-      debug(("msg", "multi scheduler poll success"), ("source", name), ("slot", slot), ("timestamp", timestamp),
-        ("limit", max), ("count", events.size), ("proc_time", s"${endTime - startTime}ms"))
-      successEvents.toList
-    } catch {
-      case ex: Throwable =>
-        error(("msg", "multi scheduler error"), ("source", name), ("slot", slot), ("timestamp", timestamp),
-          ("ex", printStackTraceStr(ex)))
-        successEvents.toList
+    val startTime = System.currentTimeMillis()
+    val events = traceStore.pollSchedulerEvents(name, slot, timestamp, max)
+    if (events.size > 0) {
+      val successes = eventBus.doProcess(events.toList)
+      successEvents.appendAll(successes.filter(e => e != null))
     }
+    val endTime = System.currentTimeMillis()
+    if (events.size != successEvents.size) {
+      warn(("msg", "multi scheduler poll error"),
+        ("poll size", events.size), ("process size", successEvents.size))
+    }
+    debug(("msg", "multi scheduler poll success"), ("source", name), ("slot", slot), ("timestamp", timestamp),
+      ("limit", max), ("count", events.size), ("proc_time", s"${endTime - startTime}ms"))
+    successEvents.toList
   }
 
 }
