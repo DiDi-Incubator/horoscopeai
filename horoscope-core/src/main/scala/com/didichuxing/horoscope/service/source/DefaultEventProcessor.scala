@@ -120,8 +120,8 @@ class DefaultEventProcessor(sourceName: String, params: Config)
           error(("msg", "commit check event error"), ("instance", Value(flowInstance).toJson))
           backPress.release()
         } else {
-          debug(("msg", "event execute success"),
-            ("instance", Value(fib).toJson), ("duration", s"${fib.getEndTime - fib.getStartTime} ms"))
+//          debug(("msg", "event execute success"),
+//            ("instance", Value(fib).toJson), ("duration", s"${fib.getEndTime - fib.getStartTime} ms"))
           info(("msg", "event execute success"), ("source", sourceName),
             ("duration", s"${fib.getEndTime - fib.getStartTime} ms"))
           // 打印ODS分析日志

@@ -122,6 +122,11 @@ trait BasicConvertible {
     case NumberValue(n) => n
   }
 
+  implicit val valueToBytes: To[Array[Byte]] = newTo {
+    case NULL => Array.empty[Byte]
+    case Binary(v) => v
+  }
+
   implicit def valueToOption[T: TypeTag](
     implicit
     converter: Lazy[To[T]]
