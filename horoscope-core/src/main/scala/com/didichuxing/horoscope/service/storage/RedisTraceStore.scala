@@ -203,7 +203,9 @@ class RedisTraceStore(executionContext: ExecutionContext = null) extends Abstrac
       val events = instance.getScheduleList
       events.groupBy(event => {
         val traceId = event.getTraceId
-        getSchedulerKey(source, getSlot(traceId, slotCount))
+        val slotId = getSlot(traceId, slotCount)
+        info(("msg", "schedule slot"), ("source", source), ("slot_id", slotId))
+        getSchedulerKey(source, slotId)
       }).foreach {
         case (key, events) => {
           events.foreach(e => {
