@@ -159,11 +159,15 @@ class RedisTraceStore(executionContext: ExecutionContext = null) extends Abstrac
       if (goto.hasScheduledTimestamp && goto.getScheduledTimestamp > 0) {
         //延迟执行
         val schSource = Utils.schStoreCol(config)
-        val gotoKey = getMailboxKey(schSource, getSlot(goto.getTraceId, slotCount))
+        val slotId = getSlot(goto.getTraceId, slotCount)
+        info(("msg", "delay schedule slot"), ("source", source), ("slot_id", slotId))
+        val gotoKey = getMailboxKey(schSource, slotId)
         pipeline.hset(toBytes(gotoKey), toBytes(goto.getEventId), goto.toByteArray)
       } else {
         //立即执行
-        val gotoKey = getMailboxKey(source, getSlot(goto.getTraceId, slotCount))
+        val slotId = getSlot(goto.getTraceId, slotCount)
+        info(("msg", "instantly schedule slot"), ("source", source), ("slot_id", slotId))
+        val gotoKey = getMailboxKey(source, slotId)
         pipeline.hset(toBytes(gotoKey), toBytes(goto.getEventId), goto.toByteArray)
       }
     }
