@@ -53,7 +53,7 @@ class DefaultMultiScheduler(implicit ctx: ApplicationContext) extends MultiSched
         while (status.get() && !Thread.currentThread().isInterrupted) {
           try {
             val backpress = Try(params.getInt("backpress.permits")).getOrElse(100)
-            val limit = min(10, max(1, backpress / 5))
+            val limit = min(2, max(1, backpress / 5))
             val serverCount = if (resourceManager == null) 1 else resourceManager.getParticipants().size
             val slotRange = if (resourceManager == null) {
               debug(("msg", "local mode"))

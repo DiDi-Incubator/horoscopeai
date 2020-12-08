@@ -266,10 +266,15 @@ object FlowValueConverter {
       case BooleanValue(primitive) =>
         builder.setBoolean(primitive)
       case NumberValue(primitive) =>
-        if (primitive.scale == 0) {
-          builder.setIntegral(primitive.toLongExact)
-        } else {
-          builder.setFractional(primitive.toDouble)
+        try {
+          if (primitive.scale == 0) {
+            builder.setIntegral(primitive.toLongExact)
+          } else {
+            builder.setFractional(primitive.toDouble)
+          }
+        } catch {
+          case _: ArithmeticException =>
+            builder.setFractional(primitive.toDouble)
         }
       case Text(text) =>
         if (text != null) {

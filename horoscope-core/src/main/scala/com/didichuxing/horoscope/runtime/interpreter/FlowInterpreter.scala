@@ -505,11 +505,16 @@ class FlowInterpreter(
             case (indices, dict: ValueDict) => indices -> dict
           }).toSeq
 
+          val beginTime = System.currentTimeMillis()
           future = Future.sequence(batchArgs.map({
             case (indices, dict) => composite.impl.composite(dict).map(indices -> _)
           })).map(records => table.update(records).value)
 
           future onComplete { value =>
+            val endTime = System.currentTimeMillis()
+            logInfo(("msg", "batch composite complete"), ("eventId", eventId),
+              ("name", composite.name), ("compositor", composite.compositor),
+              ("proc_time", s"${endTime - beginTime}ms"))
             self ! BatchCompositeResult(this, value)
           }
         }
