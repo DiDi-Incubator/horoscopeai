@@ -103,7 +103,7 @@ class FlowExecutorImpl(
               )
             } else {
               context.actorOf(
-                Props(classOf[FlowInterpreter], env, manager, event, traceContext), event.getEventId
+                Props(classOf[FlowInterpreter], env, manager, event, traceContext, config), event.getEventId
               )
             }
 

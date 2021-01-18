@@ -31,6 +31,8 @@ class Flow(val flowDef: FlowDef)(
 
   def isCompatible: Boolean = flowDef.getConfigMap.getOrElse("mode", "") == "compatible"
 
+  def isLogEnabled: Boolean = flowDef.getConfigMap.getOrElse("log", "") == "enabled"
+
   def chart: FlowChart = new FlowChart(this)
 }
 

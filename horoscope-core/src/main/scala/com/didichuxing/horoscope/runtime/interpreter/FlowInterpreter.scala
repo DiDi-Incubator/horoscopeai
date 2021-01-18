@@ -20,6 +20,7 @@ import com.didichuxing.horoscope.runtime.FlowExecutorImpl.CommitEvent
 import com.didichuxing.horoscope.runtime._
 import com.didichuxing.horoscope.util.Utils.getEventId
 import com.didichuxing.horoscope.util.Logging
+import com.typesafe.config.Config
 
 import scala.collection.mutable
 import scala.concurrent.Future
@@ -31,7 +32,8 @@ class FlowInterpreter(
   env: Environment,
   manager: ActorRef,
   event: FlowEvent,
-  traceContext: Map[String, TraceVariable]
+  traceContext: Map[String, TraceVariable],
+  config: Config
 ) extends Actor with Logging {
 
   import context.dispatcher
@@ -48,6 +50,8 @@ class FlowInterpreter(
 
   val traceId: String = event.getTraceId
   val eventId: String = event.getEventId
+
+  val isGlobalLogDisabled: Boolean = Try(config.getBoolean("horoscope.flow-executor.log.disabled")).getOrElse(false)
 
   override def preStart(): Unit = {
     self ! Continue(Main)
@@ -435,7 +439,7 @@ class FlowInterpreter(
 
     override protected def onComplete: Handle = super.onComplete orElse {
       case Success(value) =>
-        if (!name.startsWith("-") && !evaluate.isTransient) {
+        if (isLogEnabled && !name.startsWith("-") && !evaluate.isTransient) {
           procedure.log.putAssign(name, value.as[FlowValue])
         }
     }
@@ -456,7 +460,7 @@ class FlowInterpreter(
 
           log.setCompositor(composite.compositor)
           log.setStartTime(System.currentTimeMillis())
-          if (!composite.isTransient) log.setArgument(argument.as[FlowValue])
+          if (isLogEnabled && !composite.isTransient) log.setArgument(argument.as[FlowValue])
 
           val beginTime = System.currentTimeMillis()
           future = composite.impl.composite(argument)
@@ -475,7 +479,7 @@ class FlowInterpreter(
 
     override protected def onComplete: Handle = super.onComplete orElse {
       case Success(value) =>
-        if (!composite.isTransient) log.setResult(value.as[FlowValue])
+        if (isLogEnabled && !composite.isTransient) log.setResult(value.as[FlowValue])
         procedure.log.putComposite(name, log.build())
     }
   }
@@ -497,7 +501,7 @@ class FlowInterpreter(
           }
 
           log.setCompositor(composite.compositor)
-          if (!composite.isTransient) log.setArgument(table.as[FlowValue])
+          if (isLogEnabled && composite.isTransient) log.setArgument(table.as[FlowValue])
           log.setStartTime(System.currentTimeMillis())
           log.setBatchSize(table.size)
 
@@ -525,7 +529,7 @@ class FlowInterpreter(
 
     override protected def onComplete: Handle = super.onComplete orElse {
       case Success(value) =>
-        if (!composite.isTransient) log.setResult(value.as[FlowValue])
+        if (isLogEnabled && !composite.isTransient) log.setResult(value.as[FlowValue])
         procedure.log.putComposite(name, log.build())
     }
   }
@@ -557,6 +561,8 @@ class FlowInterpreter(
     @inline final def isDone: Boolean = result.nonEmpty
 
     @inline final def isReady: Boolean = result.exists(_.isSuccess)
+
+    protected lazy val isLogEnabled: Boolean = !isGlobalLogDisabled || procedure.flow.isLogEnabled
 
     protected def execute(): Dependencies = waits()
 
