@@ -161,6 +161,7 @@ class ExecutorSuite extends FunSuite
       instance("procedure.length()").as[Int] shouldBe 1
       instance("procedure[0].flow_name").as[String] shouldBe "/v2/hello"
       instance("procedure[0].assign.result").as[String] shouldBe "hello world!"
+      instance("procedure[0].assign.event_id").as[String] shouldBe "0"
     }
   }
 

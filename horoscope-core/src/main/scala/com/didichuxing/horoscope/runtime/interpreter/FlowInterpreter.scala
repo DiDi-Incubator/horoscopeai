@@ -132,7 +132,7 @@ class FlowInterpreter(
         case (name, variable) =>
           val key = if (name.startsWith("@")) name else "@" + name
           (key, new PlaceholderContext(key, Try(Value(variable.getValue)))(procedure))
-      }).toMap
+      }).toMap ++ Map("@event_id" -> new PlaceholderContext("@event_id", Try(Value(eventId)))(procedure))
     )
 
 
