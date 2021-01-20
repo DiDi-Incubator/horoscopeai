@@ -122,7 +122,8 @@ class FlowInterpreter(
     def this(flowName: String, scopes: Seq[String], args: Map[String, Context]) = this(
       flow = getFlowByName(flowName),
       scopes = scopes,
-      alias = _ => args
+      alias = procedure => args ++ Map(
+        "@event_id" -> new PlaceholderContext("@event_id", Try(Value(eventId)))(procedure))
     )
 
     def this(flowName: String, scopes: Seq[String], args: java.util.Map[String, TraceVariable]) = this(
