@@ -148,6 +148,7 @@ object EventBuilders extends Logging {
     expressionCache.computeIfAbsent(sourceName, new Function[String, Expression]() {
       override def apply(t: String): Expression = {
         val extract = params.getConfig("extract-expression").entrySet()
+          .filter(_.getKey.trim.nonEmpty)
           .map(v => s"${"\"" + v.getKey + "\""}:${v.getValue.unwrapped()}").mkString(",")
         Expression(s"{$extract}")
       }
