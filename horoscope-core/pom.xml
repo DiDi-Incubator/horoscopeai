@@ -6,7 +6,7 @@
     <parent>
         <groupId>com.didichuxing.horoscope</groupId>
         <artifactId>horoscope-parent</artifactId>
-        <version>0.6.1-SNAPSHOT</version>
+        <version>0.6.2-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
