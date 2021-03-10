@@ -383,6 +383,33 @@ class RedisTraceStore(executionContext: ExecutionContext = null) extends Abstrac
             )
           }
         },
+        get {
+          path("slots" / Segment / Remaining) { (table, source) =>
+            var jedis: Jedis = null
+            complete(
+              try {
+                var details: Map[String, Long] = Map()
+                jedis = pool.getResource
+                for (slot <- 0 until slotCount) {
+                  table match {
+                    case "mb" =>
+                      val key = getMailboxKey(source, slot)
+                      val slotCount = jedis.hlen(key)
+                      details += (slot.toString -> slotCount)
+                    case "sc" =>
+                      val key = getSchedulerKey(source, slot)
+                      val slotCount = jedis.zcount(key, 0, Long.MaxValue)
+                      details += (slot.toString -> slotCount)
+                    case _ =>
+                  }
+                }
+                details.toJson
+              } finally {
+                close(jedis)
+              }
+            )
+          }
+        },
         delete {
           path("flush" / Segment / Remaining) { (table, source) =>
             SystemLog.create()
@@ -445,6 +472,24 @@ class RedisTraceStore(executionContext: ExecutionContext = null) extends Abstrac
                     (key, JsonFormat.printer().print(value.getValue).parseJson)
                 }
                 context.toMap.toJson
+              } finally {
+                close(jedis)
+              }
+            )
+          }
+        },
+        get {
+          path("sample" / Segment / Segment / Remaining) { (table, source, slot) =>
+            var jedis: Jedis = null
+            complete(
+              try {
+                jedis = pool.getResource
+                val events = table match {
+                  case "mb" => getEventsBySource(source, slot.toInt, slot.toInt + 1).take(10)
+                  case "sc" => pollSchedulerEvents(source, slot.toInt, System.currentTimeMillis(), 10)
+                  case _ => Nil
+                }
+                events.map(JsonFormat.printer().omittingInsignificantWhitespace().print(_).parseJson).toList
               } finally {
                 close(jedis)
               }
