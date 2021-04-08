@@ -28,8 +28,8 @@ class LocalJythonBuiltInV2(fileStore: FileStore) extends BuiltIn with Logging {
 
   def loadFileList(): (Seq[File], Seq[File]) = {
     val files = fileStore.listFiles(".")
-    val functions = files.filter(_.getAbsolutePath.contains("functions"))
-    val methods = files.filter(_.getAbsolutePath.contains("methods"))
+    val functions = files._2.filter(_.getAbsolutePath.contains("functions"))
+    val methods = files._2.filter(_.getAbsolutePath.contains("methods"))
     (functions, methods)
   }
 
