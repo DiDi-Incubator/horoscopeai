@@ -5,9 +5,9 @@ import com.didichuxing.horoscope.runtime.expression.{BuiltIn, DefaultBuiltIn, Lo
 import com.didichuxing.horoscope.util.Logging
 
 class GitFlowStore(
-  configStore: ConfigStore,
-  fileStore: FileStore,
-  extBuiltIn: Option[BuiltIn] = None) extends FlowStore with ConfigChangeListener with Logging {
+                    configStore: ConfigStore,
+                    fileStore: FileStore,
+                    extBuiltIn: Option[BuiltIn] = None) extends FlowStore with ConfigChangeListener with Logging {
   configStore.register(this)
   implicit val builtIn = {
     if (extBuiltIn.isDefined) {
@@ -18,8 +18,8 @@ class GitFlowStore(
   }
 
   private val files = fileStore.listFiles("./")
-  private val flows = files.filter(_.getAbsolutePath.endsWith(".flow"))
-  private val graphQL = files.filter(_.getAbsolutePath.endsWith(".graphql"))
+  private val flows = files._2.filter(_.getAbsolutePath.endsWith(".flow"))
+  private val graphQL = files._2.filter(_.getAbsolutePath.endsWith(".graphql"))
 
   override def getFlowByName(name: String): FlowDslMessage.FlowDef = ???
 
