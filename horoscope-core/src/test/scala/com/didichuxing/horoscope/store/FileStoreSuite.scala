@@ -17,7 +17,7 @@ class FileStoreSuite extends FunSuite
   with Logging {
   val config: Config = ConfigFactory.parseString(
     s"""
-       |horoscope.storage.file-store.local-root-path = "./infoFlow"
+       |horoscope.storage.file-store.local-root-path = "./horoscope-core/src/test/resources/flow"
        |horoscope.storage.file-store.type = ["flow","graphQL","py"]
      """.stripMargin)
   val store = new LocalFileStore(config)
@@ -26,6 +26,13 @@ class FileStoreSuite extends FunSuite
   val commandLogger: ProcessLogger = ProcessLogger(line => outputResult.append(line),
     line => errorResult.append(line))
 
+  override def beforeAll(): Unit ={
+    store.createDirectories(store.rootPath)
+  }
+
+  override def afterAll(): Unit = {
+    store.deleteFile(store.rootPath)
+  }
 
   test("create three empty directories") {
     val dirPath1 = store.rootPath + "/traffic/helloWorld"
@@ -62,7 +69,7 @@ class FileStoreSuite extends FunSuite
   }
 
   test("update files") {
-    val content = "# /helloworld/test_ldy\n\n\n***\n    a <- {\"in_city_list\": true}\n    b <- {\"b\": 1} + a      " +
+    val content = "# /helloWorld/hello\n\n\n***\n    a <- {\"in_city_list\": true}\n    b <- {\"b\": 1} + a      " +
       "\n    \n    \n\n\n***"
     val filePath = store.rootPath + "/traffic/helloWorld/hello.flow"
     assert(store.updateFile(filePath, content))

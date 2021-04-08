@@ -103,6 +103,9 @@ class LocalFileStore(config: Config) extends FileStore with Logging {
     if (Files.notExists(target)) Files.createFile(target)
     var writer: BufferedWriter = null
     try {
+      if(path.endsWith(".flow")) {       //文件后缀为flow，语法检验
+        require(path.endsWith(s"${checkSyntax(content).name}.flow"))
+      }
       require(path.endsWith(checkSyntax(content).name))
       writer = Files.newBufferedWriter(target, Charset.forName("UTF-8"))
       writer.write(content)

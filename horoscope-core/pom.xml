@@ -212,33 +212,10 @@
             <version>1.0.0-beta7</version>
         </dependency>
 
-
         <dependency>
             <groupId>org.eclipse.jgit</groupId>
             <artifactId>org.eclipse.jgit.pgm</artifactId>
-            <version>5.10.0.202012080955-r</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.eclipse.jgit</groupId>
-                    <artifactId>org.eclipse.jgit.ssh</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.eclipse.jgit</groupId>
-                    <artifactId>org.eclipse.jgit.http.apache</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.eclipse.jgit</groupId>
-                    <artifactId>org.eclipse.jgit.lfs</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.eclipse.jgit</groupId>
-                    <artifactId>org.eclipse.jgit.ui</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.eclipse.jgit</groupId>
-                    <artifactId>org.eclipse.jgit.archive</artifactId>
-                </exclusion>
-            </exclusions>
+            <version>4.5.1.201703201650-r</version>
         </dependency>
 
     </dependencies>
