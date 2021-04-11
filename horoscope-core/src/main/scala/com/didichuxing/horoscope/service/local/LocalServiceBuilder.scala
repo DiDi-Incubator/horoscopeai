@@ -18,7 +18,7 @@ import com.didichuxing.horoscope.runtime.expression.BuiltIn
 import com.didichuxing.horoscope.service.ApplicationContext
 import com.didichuxing.horoscope.service.api.HttpServer
 import com.didichuxing.horoscope.service.source._
-import com.didichuxing.horoscope.service.storage.{DefaultFlowStore, DefaultTraceStore}
+import com.didichuxing.horoscope.service.storage.DefaultTraceStore
 import com.didichuxing.horoscope.util.Logging
 import com.typesafe.config.Config
 
@@ -44,11 +44,6 @@ class LocalServiceBuilder extends ServiceBuilder with Logging {
     this
   }
 
-  override def withCompositorFactory(name: String, factory: CompositorFactory): LocalServiceBuilder.this.type = {
-    ctx.withCompositorFactory(name, factory)
-    this
-  }
-
   override def withConfig(config: Config): LocalServiceBuilder.this.type = {
     ctx.withConfig(config)
     this
@@ -64,11 +59,6 @@ class LocalServiceBuilder extends ServiceBuilder with Logging {
     this
   }
 
-  override def withBuiltin(builtin: BuiltIn): this.type = {
-    ctx.withBuiltin(builtin)
-    this
-  }
-
   override def withExecutionContext(executor: SourceExecutionContext): this.type = {
     ctx.withSourceExecutionContext(executor)
     this
@@ -79,12 +69,24 @@ class LocalServiceBuilder extends ServiceBuilder with Logging {
     this
   }
 
+  override def withFileStore(fileStore: FileStore): this.type = {
+    ctx.withFileStore(fileStore)
+    this
+  }
+
+  override def withConfigStore(configStore: ConfigStore): this.type = {
+    ctx.withConfigStore(configStore)
+    this
+  }
+
+  override def withBuiltIn(builtIn: BuiltIn): this.type = {
+    ctx.withBuiltin(builtIn)
+    this
+  }
+
   def checkContext(): Unit = {
     assert(ctx.config != null, "config is null")
-    if (ctx.flowStore == null) {
-      ctx.withFlowStore(new DefaultFlowStore)
-      info("horoscope default init flow store")
-    }
+    assert(ctx.flowStore != null, "flow store is null")
     if (ctx.traceStore == null) {
       ctx.withTraceStore(new DefaultTraceStore)
       info("horoscope default init trace store")
@@ -96,9 +98,7 @@ class LocalServiceBuilder extends ServiceBuilder with Logging {
     if (ctx.timeTrigger == null) {
       ctx.withTimeTrigger(new DefaultTimeTrigger(ctx.config))
     }
-    if (ctx.builtIn == null) {
-      ctx.withBuiltin(DefaultBuiltIn.defaultBuiltin)
-    }
+
     if (ctx.sourceExecutionContext == null) {
       ctx.withSourceExecutionContext(DefaultSourceExecutionContext(ctx.config))
     }

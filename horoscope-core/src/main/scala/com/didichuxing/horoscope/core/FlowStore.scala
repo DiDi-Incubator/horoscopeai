@@ -7,10 +7,15 @@
 package com.didichuxing.horoscope.core
 
 import akka.http.scaladsl.server.Route
-import com.didichuxing.horoscope.core.FlowDslMessage.FlowDef
+import com.didichuxing.horoscope.runtime.experiment.ExperimentController
+import com.didichuxing.horoscope.runtime.expression.BuiltIn
 
 trait FlowStore {
-  def getFlowByName(name: String): FlowDef
+  def getFlow(name: String): Flow = throw new NotImplementedError()
+
+  def getController(name: String): Option[ExperimentController] = throw new NotImplementedError()
+
+  def getBuiltIn: BuiltIn
 
   def api: Route = _.reject()
 }

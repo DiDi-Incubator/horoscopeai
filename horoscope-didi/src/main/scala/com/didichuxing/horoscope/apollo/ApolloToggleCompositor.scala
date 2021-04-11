@@ -16,7 +16,7 @@ import scala.concurrent.Future
 class ApolloToggleCompositorFactory extends CompositorFactory {
   override def name(): String = "apollo_toggle"
 
-  override def create(code: String): Compositor = {
+  override def create(code: String)(resource: String => Array[Byte]): Compositor = {
     try {
       val config = ConfigFactory.parseString(code)
       new ApolloToggleCompositor(config)

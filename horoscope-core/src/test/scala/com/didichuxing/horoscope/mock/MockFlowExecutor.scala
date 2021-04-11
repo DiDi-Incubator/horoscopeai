@@ -26,7 +26,6 @@ class MockFlowExecutor(implicit ctx: ApplicationContext) extends FlowExecutor wi
 
   implicit val flowStore = ctx.flowStore
   implicit val traceStore = ctx.traceStore
-  implicit val compositorFactories = ctx.compositorFactories
   implicit val system = ctx.system
   var flowExecutorActorRef: ActorRef = _
   val pubLog = PublicLog(ctx.config)
@@ -56,15 +55,8 @@ class MockFlowExecutor(implicit ctx: ApplicationContext) extends FlowExecutor wi
         info(("msg", "flow executor event"), ("eventId", event.getEventId), ("traceId", event.getTraceId))
         Thread.sleep(10)
         val flowName = event.getFlowName
-        val flow = flowStore.getFlowByName(flowName)
-        val statements = flow.getBody.getStatementList
-        for (statement <- statements) {
-          if (statement.hasCompositeStatement) {
-            //traceStore.getContext()
-            //todo: execute statement
-          }
-        }
-        val flowInstance = FlowInstance.newBuilder().setEvent(event).setFlowId(flow.getId)
+
+        val flowInstance = FlowInstance.newBuilder().setEvent(event)
         if (flowName == "/root/flow1") {
           val gotoEvent = FlowEvent.newBuilder()
             .setEventId("")

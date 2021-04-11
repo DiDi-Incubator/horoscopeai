@@ -6,9 +6,10 @@
 
 package com.didichuxing.horoscope.mock
 
-import com.didichuxing.horoscope.core.{Horoscope, Sources}
+import com.didichuxing.horoscope.core.{FlowStore, Horoscope, Sources}
 import com.didichuxing.horoscope.service.local.FlowManager
 import com.didichuxing.horoscope.service.source.{EventBuilders, HttpSourceFactory}
+import com.didichuxing.horoscope.service.storage.{GitFlowStore, LocalConfigStore, LocalFileStore}
 import com.didichuxing.horoscope.util.Constants.SCH_SOURCE_FACTORY
 import com.didichuxing.horoscope.util.{Logging, SystemLog}
 import com.typesafe.config.{Config, ConfigFactory}
@@ -22,13 +23,22 @@ class LocalRunner extends Logging {
     SystemLog.create()
     info("local horoscope init...")
     //构造flowManager
+
+    val flowStore = GitFlowStore.newBuilder()
+      .withFileStore(new LocalFileStore(null))
+      .withConfigStore(new LocalConfigStore)
+      .build()
+
     flowManager = Horoscope.newLocalService()
       .withConfig(config)
-      .withCompositorFactory("default", new MockCompositorFactory)
+      .withBuiltIn(flowStore.getBuiltIn)
+      .withFlowStore(flowStore)
       .withSourceFactory("batchJsonKafka", Sources.kafka(EventBuilders.sourceEventBuilder()))
       .withSourceFactory(SCH_SOURCE_FACTORY, Sources.scheduler(EventBuilders.schedulerSourceEventBuilder()))
       .withSourceFactory("httpSource", Sources.http())
       .build()
+
+
     //启动主服务
     info("horoscope begin start service")
     flowManager.startService()

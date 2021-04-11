@@ -16,17 +16,17 @@ import com.didichuxing.horoscope.util.GitUtil._
 import com.didichuxing.horoscope.util.Logging
 import com.typesafe.config.Config
 import spray.json._
-
 import java.io.File
 import java.nio.file._
 import scala.collection.JavaConversions.asScalaBuffer
+import scala.util.Try
 
 class GitFileStore(config: Config) extends LocalFileStore(config) with Logging {
 
   override val rootPath: String = config.getString("horoscope.storage.file-store.remote-root-path")
   val centralRepo: String = config.getString("horoscope.storage.file-store.remote-central-repo")
   val centralBranch: String =
-    Some(config.getString("horoscope.storage.file-store.remote-central-branch")).getOrElse("master")
+    Try(config.getString("horoscope.storage.file-store.remote-central-branch")).getOrElse("master")
 
   private val defaultGitURL = "" // gitURL为空时, 默认指向centralRepo
   override def listFiles(gitURL: String): (String, Seq[File]) = {

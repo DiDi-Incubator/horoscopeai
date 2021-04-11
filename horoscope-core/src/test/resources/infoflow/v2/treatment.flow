@@ -1,0 +1,6 @@
+# /v2/treatment
+***
+    input <- @input
+    tag <- @tag
+    result <- "this is treatment"
+***

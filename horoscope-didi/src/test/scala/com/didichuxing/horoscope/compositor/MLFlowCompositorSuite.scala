@@ -58,7 +58,7 @@ class MLFlowCompositorSuite extends FunSuite with Matchers with BeforeAndAfterAl
     val code = "post http://localhost:18088/road-open road-open\n${link}"
     val valueDict = new SimpleDict(Map("link" -> Value(100001)))
     try {
-      info(new MLFlowCompositorFactory(compositorConfig).create(code).composite(valueDict).await().toString)
+      info(new MLFlowCompositorFactory(compositorConfig).create(code)(null).composite(valueDict).await().toString)
     } catch {
       case e: Throwable =>
         info(e.getMessage)
@@ -70,7 +70,7 @@ class MLFlowCompositorSuite extends FunSuite with Matchers with BeforeAndAfterAl
     val args = new SimpleDict(Map("entityId" -> Value("r#90000317065041"), "eventTime" -> Value(1583806926000L),
       "featureTime" -> Value(1583810400000L)))
     try {
-      info(new MLFlowCompositorFactory(compositorConfig).create(code).composite(args).await().toString)
+      info(new MLFlowCompositorFactory(compositorConfig).create(code)(null).composite(args).await().toString)
     } catch {
       case e: Throwable =>
         info(e.getMessage)

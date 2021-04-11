@@ -60,7 +60,7 @@ class HttpServer(implicit ctx: ApplicationContext) extends Logging {
             ctx.flowStore.api
           },
           pathPrefix("expression") {
-            ctx.builtIn.api
+            ctx.flowStore.getBuiltIn.api
           },
           pathPrefix("sources") {
             sourceStore.api
@@ -73,6 +73,12 @@ class HttpServer(implicit ctx: ApplicationContext) extends Logging {
           },
           pathPrefix("logs") {
             ctx.odsLogger.api
+          },
+          pathPrefix("file") {
+            ctx.fileStore.api
+          },
+          pathPrefix("choreography") {
+            ctx.configStore.api
           }
         )
       }

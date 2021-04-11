@@ -9,7 +9,7 @@ package com.didichuxing.horoscope.store
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowEvent.TokenStatus
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowInstance.Assign
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.{FlowEvent, FlowInstance, FlowValue}
-import com.didichuxing.horoscope.service.storage.{DefaultFlowStore, HBaseTraceStore}
+import com.didichuxing.horoscope.service.storage.HBaseTraceStore
 import com.didichuxing.horoscope.util.Utils._
 import com.didichuxing.horoscope.util.Logging
 import com.typesafe.config.{Config, ConfigFactory}
@@ -29,15 +29,13 @@ class TraceStoreSuite extends FunSuite with BeforeAndAfter with Logging {
 
   test("trace context") {
     val flowName = "/root/flow1"
-    val flowStore = new DefaultFlowStore
-    val flow = flowStore.getFlowByName(flowName)
-    val gotoFlow = flowStore.getFlowByName("/root/flow-goto-demo")
+    val gotoFlowName = "/root/flow-goto-demo"
     val source = "source1"
     val traceId = "trace1"
     val event = FlowEvent.newBuilder()
       .setEventId("100000")
       .setTraceId(traceId)
-      .setFlowName(flow.getName)
+      .setFlowName(flowName)
     //1. add event 10000
     val flowEvent = traceStore.addEvent(source, event)
     info(("add event", flowEvent.getEventId))
@@ -45,12 +43,12 @@ class TraceStoreSuite extends FunSuite with BeforeAndAfter with Logging {
     val gotoEvent = FlowEvent.newBuilder()
       .setEventId("100001")
       .setTraceId(traceId)
-      .setFlowName(gotoFlow.getName)
+      .setFlowName(gotoFlowName)
       .setScheduledTimestamp(System.currentTimeMillis())
       .setToken(TokenStatus.newBuilder().setName("linkId").setValue("link0001").setOwner(""))
       .build()
     val instance = FlowInstance.newBuilder()
-      .setFlowId(flow.getId)
+      .setFlowId("")
       .setEvent(event)
       .setGoto(gotoEvent)
       .addAssign(Assign.newBuilder().setName("$test").setValue(FlowValue.newBuilder().setText("hello2")))
@@ -60,7 +58,7 @@ class TraceStoreSuite extends FunSuite with BeforeAndAfter with Logging {
     //info(("scheduler event list 1", traceStore.getEventsBySource(SCH_STORE_COL, 0, 999999)))
     //3. commit event10001
     val instance2 = FlowInstance.newBuilder()
-      .setFlowId(flow.getId)
+      .setFlowId("")
       .setEvent(flowInstance.getGoto)
       .setGoto(gotoEvent)
       .addAssign(Assign.newBuilder().setName("$test").setValue(FlowValue.newBuilder().setText("hello2")))
@@ -68,7 +66,7 @@ class TraceStoreSuite extends FunSuite with BeforeAndAfter with Logging {
     info(("commit event 2", flowInstance2.getEvent.getEventId))
     //info(("scheduler event list 2", traceStore.getEventsBySource(SCH_STORE_COL, 0, 999999)))
     val instance3 = FlowInstance.newBuilder()
-      .setFlowId(flow.getId)
+      .setFlowId("")
       .setEvent(flowInstance2.getGoto)
       .addAssign(Assign.newBuilder().setName("$test").setValue(FlowValue.newBuilder().setText("hello2")))
     val flowInstance3 = traceStore.commitEvent(schStoreCol(hconf), instance3)

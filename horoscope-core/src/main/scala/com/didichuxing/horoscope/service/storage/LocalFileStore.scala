@@ -17,6 +17,7 @@ import java.io.{BufferedWriter, File, IOException}
 import java.nio.charset.Charset
 import java.nio.file._
 import java.nio.file.attribute.BasicFileAttributes
+
 import scala.collection.JavaConversions._
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Future
@@ -247,7 +248,7 @@ object LocalFileStore{
   case class Node(name: String, path: String, children: Seq[Node])
 
   def checkSyntax(text: String): Flow = {
-    implicit def buildCompositor(compositorDef: CompositorDef): Compositor = new Compositor {
+    implicit def buildCompositor(flow: String, compositorDef: CompositorDef): Compositor = new Compositor {
       def composite(args: ValueDict): Future[Value] = {
         Future.failed(new NotImplementedError())
       }

@@ -19,7 +19,7 @@ import com.didichuxing.horoscope.core.FlowDslMessage.{CompositorDef, FlowDef}
 import com.didichuxing.horoscope.core.{Compositor, Flow, FlowStore}
 import com.didichuxing.horoscope.dsl.FlowCompiler
 import com.didichuxing.horoscope.runtime.{Value, ValueDict}
-import com.didichuxing.horoscope.runtime.expression.{BuiltIn, SimpleBuiltIn}
+import com.didichuxing.horoscope.runtime.expression.{BuiltIn, DefaultBuiltIn, SimpleBuiltIn}
 import com.didichuxing.horoscope.util.Logging
 import org.apache.curator.framework.CuratorFramework
 import org.apache.curator.framework.recipes.cache.{TreeCache, TreeCacheEvent, TreeCacheListener}
@@ -104,7 +104,7 @@ class ZookeeperFlowStore(curator: CuratorFramework) extends FlowStore with TreeC
     }
   }
 
-  override def getFlowByName(name: String): FlowDef = flows(name)
+  override def getBuiltIn: BuiltIn = DefaultBuiltIn.defaultBuiltin
 
   override def api: Route = {
     import akka.http.scaladsl.server.Directives._
@@ -225,7 +225,7 @@ object ZookeeperFlowStore {
   case class Node(name: String, flow: String, children: Seq[Node])
 
   def checkSyntax(text: String): Flow = {
-    implicit def buildCompositor(compositorDef: CompositorDef): Compositor = new Compositor {
+    implicit def buildCompositor(flow: String, compositorDef: CompositorDef): Compositor = new Compositor {
       def composite(args: ValueDict): Future[Value] = {
         Future.failed(new NotImplementedError())
       }

@@ -6,6 +6,7 @@
 
 package com.didichuxing.horoscope.dsl
 
+import com.didichuxing.horoscope.core.Flow.FlowConf
 import com.didichuxing.horoscope.core.FlowDslMessage.{CompositorDef, FlowDef}
 import com.didichuxing.horoscope.core.{Compositor, Flow}
 import com.didichuxing.horoscope.runtime.expression.{BuiltIn, Expression, ExpressionBuilder}
@@ -17,12 +18,14 @@ import scala.collection.mutable.ListBuffer
 import scala.concurrent.duration.Duration
 import scala.language.implicitConversions
 import scala.util.Try
+import com.didichuxing.horoscope.util.FlowConfParser._
+import com.didichuxing.horoscope.util.Logging
 
-class FlowBuilder(flowDef: FlowDef)(
+class FlowBuilder(flowDef: FlowDef, flowConf: FlowConf)(
   implicit
-  buildCompositor: CompositorDef => Compositor,
+  buildCompositor: (String, CompositorDef) => Compositor,
   builtin: BuiltIn
-) extends Flow.Builder {
+) extends Flow.Builder with Logging {
 
   import Flow._
   import com.didichuxing.horoscope.core.FlowDslMessage
@@ -30,7 +33,7 @@ class FlowBuilder(flowDef: FlowDef)(
 
   private val compositors: Map[String, Compositor] = {
     flowDef.getDeclaration.getCompositorList.map(
-      desc => (desc.getName, Try(buildCompositor(desc)).recover({
+      desc => (desc.getName, Try(buildCompositor(flowDef.getName, desc)).recover({
         case e: Throwable => Compositor.failed(e)
       }).get)
     ).toMap
@@ -42,9 +45,9 @@ class FlowBuilder(flowDef: FlowDef)(
   private val placeholders: mutable.Map[String, Placeholder] = mutable.Map.empty
 
   def build(): Flow = {
-    val main: BlockBuilder = new BlockBuilder(flowDef.getBody, None)
+    val main: BlockBuilder = new BlockBuilder(flowDef.getBody, None).withFlowConf(flowConf)
     val terminator = main.result
-    new Flow(flowDef)(
+    new Flow(flowDef, flowConf)(
       nodes = nodes,
       terminator = terminator,
       arguments = placeholders.filter(_._2.name.startsWith("@")).toMap,
@@ -128,6 +131,19 @@ class FlowBuilder(flowDef: FlowDef)(
     }
   }
 
+  case class SubscribeBuilder(scope: String, flow: String, definition: SubscribeConf)(
+    args: Map[String, NodeBuilder], condition: Option[NodeBuilder], target: Option[NodeBuilder], traffic: Bucket
+  ) extends GenericNodeBuilder[Subscribe] with ProcedureSymbol {
+    lazy val result: Subscribe = Subscribe(scope, flow, definition)(
+      args.mapValues(_.result), condition.map(_.result), target.map(_.result), traffic)
+
+    override def builders: Seq[NodeBuilder] = this :: Nil
+
+    def export(name: String): NodeBuilder = {
+      panic(s"should not export variable $name from subscribe procedure $scope")
+    }
+  }
+
   case class ScheduleBuilder(scope: String, flow: String)(
     args: Map[String, NodeBuilder], trace: Option[NodeBuilder], waitTime: Duration
   ) extends GenericNodeBuilder[Schedule] with ProcedureSymbol {
@@ -171,14 +187,6 @@ class FlowBuilder(flowDef: FlowDef)(
       }).toMap
     }
 
-    val variables: Map[String, VariableSymbol] = {
-      symbols collect { case (key, symbol: VariableSymbol) => (key, symbol) }
-    }
-
-    val procedures: Map[String, ProcedureSymbol] = {
-      symbols collect { case (key, symbol: ProcedureSymbol) => (key, symbol) }
-    }
-
     lazy val result: Choice = {
       var last: Option[Choice] = None
       for ((name, (condition, block)) <- choices) {
@@ -187,11 +195,6 @@ class FlowBuilder(flowDef: FlowDef)(
       }
 
       last.get
-    }
-
-    def export(scope: String, name: String): NodeBuilder = {
-      require(procedures.contains(scope), s"fail to find procedure $scope")
-      procedures(scope).export(name)
     }
   }
 
@@ -338,6 +341,27 @@ class FlowBuilder(flowDef: FlowDef)(
       }
     }
 
+    implicit class TupleExpressionHelper(val namedExpression: (String, String)) {
+      def evaluateFor(finalName: String): NodeBuilder = {
+        val (originalName, expression) = namedExpression
+        val name = if (originalName.isEmpty) finalName else makeTempName(finalName, originalName)
+        val expr = Expression(flowDef.getName, expression)
+        val args = expr.args
+        val builder = NodeBuilder {
+          Evaluate(name, expr, args.mapValues(_.result))()
+        }
+
+        children += builder
+        builder
+      }
+    }
+
+    implicit class ArgumentMapHelper(val args: Map[String, String]) {
+      def evaluateFor(finalName: String): Map[String, NodeBuilder] = {
+        args.map(arg => (arg._1, arg.evaluateFor(finalName)))
+      }
+    }
+
     implicit class ArgumentListHelper(val args: java.util.List[FlowDslMessage.NamedExpression]) {
       def evaluateFor(finalName: String): Map[String, NodeBuilder] = {
         args.map(arg => (arg.getName, arg.evaluateFor(finalName))).toMap
@@ -363,6 +387,31 @@ class FlowBuilder(flowDef: FlowDef)(
 
         case BRANCH_STATEMENT =>
           parseBranchStatement(statement.getBranchStatement)
+      }
+    }
+
+    def withFlowConf(flowConf: FlowConf): this.type = {
+      flowConf.parsedSubscribeConf.foreach(parseSubscribe)
+
+      this
+    }
+
+    def parseSubscribe(subscribe: SubscribeConf): Unit = {
+      try {
+        val scope = subscribe.name
+        require(!symbols.contains(scope), s"symbol $scope already exists")
+
+        val args = subscribe.args.evaluateFor(scope)
+        val condition = subscribe.condition.map("condition" -> _).map(_.evaluateFor(scope))
+        val target = subscribe.target.map("target" -> _).map(_.evaluateFor(scope))
+        val builder = SubscribeBuilder(scope, subscribe.subscriber, definition = subscribe)(
+          args, condition, target, subscribe.traffic)
+
+        children += builder
+        symbols += scope -> builder
+      } catch {
+        case cause: Throwable =>
+          error(s"parse subscribe config failed, name: ${subscribe.name}, cause: ${cause.getMessage}")
       }
     }
 

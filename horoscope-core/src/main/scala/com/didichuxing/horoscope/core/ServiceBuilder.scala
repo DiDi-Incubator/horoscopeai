@@ -19,17 +19,19 @@ trait ServiceBuilder {
 
   def withFlowStore(flowStore: FlowStore): this.type
 
+  def withFileStore(fileStore: FileStore): this.type
+
+  def withConfigStore(configStore: ConfigStore): this.type
+
   def withTraceStore(traceStore: TraceStore): this.type
 
   def withSourceFactory(name: String, factory: SourceFactory): this.type
-
-  def withCompositorFactory(name: String, factory: CompositorFactory): this.type
 
   def withActorSystem(system: ActorSystem): this.type
 
   def withTimeTrigger(timeTrigger: TimeTrigger): this.type
 
-  def withBuiltin(builtin: BuiltIn): this.type
+  def withBuiltIn(builtIn: BuiltIn): this.type
 
   def withExecutionContext(executor: SourceExecutionContext): this.type
 

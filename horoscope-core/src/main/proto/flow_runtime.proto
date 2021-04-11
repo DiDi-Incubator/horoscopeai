@@ -30,11 +30,17 @@ message FlowValue {
 }
 
 message FlowEvent {
+    message Choice {
+        repeated string choice = 1;
+    }
     message Parent {
         required string event_id = 1;
         required string trace_id = 2;
         required string flow_name = 3;
         repeated string scope = 4;
+        repeated TraceVariable variable = 5; // variable context
+        map<string, Choice> choice = 6; // choice context
+        map<string, FlowValue> experiment = 7; // experiment context
     }
 
     required string event_id = 1;
@@ -121,6 +127,7 @@ message FlowInstance {
         optional int64 start_time = 10;
         optional int64 end_time = 11;
         optional Experiment experiment = 12;
+        repeated string context_choice = 13;
     }
 
     optional string flow_id = 1;

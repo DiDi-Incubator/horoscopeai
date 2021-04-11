@@ -1,0 +1,5 @@
+# /v2/subscribe
+***
+    input <- @input
+    output <- @output
+***

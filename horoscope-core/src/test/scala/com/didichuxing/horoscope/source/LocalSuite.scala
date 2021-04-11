@@ -9,10 +9,9 @@ package com.didichuxing.horoscope.source
 import com.didichuxing.horoscope.mock.LocalRunner
 import com.didichuxing.horoscope.util.Logging
 import com.typesafe.config.ConfigFactory
-import org.scalatest.{BeforeAndAfter, FunSuite}
+import org.scalatest.{BeforeAndAfter, FunSuite, Ignore}
 
 class LocalSuite extends FunSuite with BeforeAndAfter with Logging {
-
   before {
     new LocalRunner().run(ConfigFactory.load("application-local.conf"))
   }

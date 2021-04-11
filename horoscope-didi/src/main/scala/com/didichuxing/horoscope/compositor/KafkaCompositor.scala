@@ -40,7 +40,7 @@ class KafkaCompositorFactory(implicit ec: ExecutionContext) extends CompositorFa
 
   override def name(): String = "kafka"
 
-  override def create(code: String): Compositor = {
+  override def create(code: String)(resource: String => Array[Byte]): Compositor = {
     try {
       val config = ConfigFactory.parseString(code)
       val clusterId = config.getString("cluster-id")

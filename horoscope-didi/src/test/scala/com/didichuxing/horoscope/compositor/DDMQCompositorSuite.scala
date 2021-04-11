@@ -36,7 +36,7 @@ class DDMQCompositorSuite extends FunSuite with Matchers with BeforeAndAfterAll 
     val args = Value(Map("a"->Value("1"), "b"->Value(2.323214124),
       "e"->Value(200000000), "c"->dict, "d"->list, "f"->Value(true)))
     val body = Value(Map("body"->dict))
-    val compositor = new DDMQCompositorFactory().create(code)
+    val compositor = new DDMQCompositorFactory().create(code)(null)
     for(_ <- 0 until 1) {
       val f = compositor.composite(args)
       val value = Await.result(f, 5 second)

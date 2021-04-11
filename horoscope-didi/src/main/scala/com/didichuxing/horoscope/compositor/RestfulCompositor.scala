@@ -64,7 +64,7 @@ class RestfulCompositorFactory(config: Config)(
    *              ${variable}: variable will be filled at runtime
    * @return
    */
-  override def create(code: String): RestfulCompositor = {
+  override def create(code: String)(resource: String => Array[Byte]): RestfulCompositor = {
     val flowConfig = CompositorUtil.parseConfigFromFlow(code)
     val restfulConfig = new RestfulCompositorConfig(config, flowConfig)
     new RestfulCompositor(restfulConfig)

@@ -16,7 +16,7 @@ import akka.util.Timeout
 import akka.pattern.ask
 import com.didichuxing.horoscope.core.FlowRuntimeMessage
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.{FlowInstanceOrBuilder, FlowValue}
-import com.didichuxing.horoscope.runtime.Value
+import com.didichuxing.horoscope.runtime.{Binary, NumberValue, Text, Value}
 import com.typesafe.config.Config
 import org.apache.hadoop.hbase.util.Bytes
 
@@ -225,5 +225,18 @@ object Utils extends Logging {
     val pw: PrintWriter = new PrintWriter(sw)
     cause.printStackTrace(pw)
     sw.toString()
+  }
+
+  def bucket(value: Value): Int = {
+    val uuid = value match {
+      case Text(text) => UUID.nameUUIDFromBytes(text.getBytes).toString
+      case NumberValue(v) => UUID.nameUUIDFromBytes(v.toDouble.toString.getBytes).toString
+      case Binary(bytes) => UUID.nameUUIDFromBytes(bytes).toString
+      case _ => UUID.randomUUID().toString
+    }
+
+    val slot = Utils.getSlot(uuid,100)
+
+    slot
   }
 }

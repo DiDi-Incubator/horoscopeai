@@ -15,7 +15,7 @@ import scala.concurrent.Future
 class MockCompositorFactory extends CompositorFactory {
   override def name(): String = "default"
 
-  override def create(code: String): Compositor = {
+  override def create(code: String)(resource: String => Array[Byte]): Compositor = {
     new MockCompositor(code)
   }
 }

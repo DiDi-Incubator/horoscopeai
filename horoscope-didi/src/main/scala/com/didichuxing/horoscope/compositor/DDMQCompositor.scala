@@ -24,7 +24,7 @@ class DDMQCompositorFactory(implicit ec: ExecutionContext) extends CompositorFac
 
   override def name(): String = "ddmq"
 
-  override def create(code: String): Compositor = {
+  override def create(code: String)(resource: String => Array[Byte]): Compositor = {
     try {
       val config = ConfigFactory.parseString(code)
       val topic = config.getString("topic")

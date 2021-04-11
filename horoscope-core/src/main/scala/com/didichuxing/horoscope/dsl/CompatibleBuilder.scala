@@ -18,21 +18,21 @@ import scala.concurrent.duration.Duration
 import scala.language.implicitConversions
 import scala.util.Try
 
-class CompatibleBuilder(flowDef: FlowDef)(
+class CompatibleBuilder(flowDef: FlowDef, flowConf: FlowConf)(
   implicit
-  buildCompositor: CompositorDef => Compositor,
+  buildCompositor: (String, CompositorDef) => Compositor,
   builtin: BuiltIn
 ) extends Builder {
   import scala.collection.JavaConversions._
 
   def build(): Flow = {
     val terminator = parseBlock(flowDef.getBody).terminator
-    new Flow(flowDef)(nodes, terminator, Map.empty, Map.empty)
+    new Flow(flowDef, flowConf)(nodes, terminator, Map.empty, Map.empty)
   }
 
   val compositors: Map[String, Compositor] = {
     flowDef.getDeclaration.getCompositorList.map(
-      desc => (desc.getName, buildCompositor(desc))
+      desc => (desc.getName, buildCompositor(flowDef.getName, desc))
     ).toMap
   }
   val arguments: mutable.Map[String, Placeholder] = mutable.Map()

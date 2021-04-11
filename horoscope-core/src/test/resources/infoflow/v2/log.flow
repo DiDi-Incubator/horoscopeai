@@ -1,0 +1,27 @@
+# /v2/log
+
+***
+    a <- @input
+    b <- $delta
+    $delta <- 1
+    <> {
+        ? positive = a > 0
+        => {
+            output <- "positive"
+        }
+
+        ? negative = a < 0
+        => {
+            output <- "negative"
+        }
+
+        ? zero = true
+        => {}
+    }
+
+    result <- output
+    <include> => /v2/log-include?input=@input & tag=output
+    export <- include->tag
+    <schedule> + => /v2/log-schedule?input=@input
+
+***

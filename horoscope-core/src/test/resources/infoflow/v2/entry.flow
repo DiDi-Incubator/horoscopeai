@@ -1,0 +1,8 @@
+# /v2/entry
+
+***
+    result <- @level
+    // event_id <- @event_id
+    <include> => /v2/base?input=@level&tag="default"
+    <schedule> + => /v2/base?input=@level&tag="default"
+***

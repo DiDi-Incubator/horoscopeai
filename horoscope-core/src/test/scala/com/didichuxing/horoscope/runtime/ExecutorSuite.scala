@@ -8,47 +8,26 @@ package com.didichuxing.horoscope.runtime
 
 import java.nio.charset.Charset
 import java.time.LocalDateTime
-import java.util.Base64
 
 import akka.actor.ActorSystem
 import com.didichuxing.horoscope.core.FlowDslMessage.CompositorDef
 import com.didichuxing.horoscope.core.FlowRuntimeMessage._
 import com.didichuxing.horoscope.core.{Compositor, Flow}
-import com.didichuxing.horoscope.dsl.FlowCompiler
-import com.didichuxing.horoscope.runtime.convert.ValueTypeAdapter
-import com.didichuxing.horoscope.util.Logging
+import com.didichuxing.horoscope.dsl.{FlowCompiler}
+import com.didichuxing.horoscope.runtime.experiment.{ExperimentController}
 import com.google.common.io.Resources
-import com.google.gson.{Gson, GsonBuilder}
-import com.google.protobuf.util.JsonFormat
 import com.typesafe.config.ConfigFactory
-import org.scalamock.scalatest.MockFactory
-import org.scalatest.concurrent.ScalaFutures
-import org.scalatest.time.{Millis, Seconds, Span}
-import org.scalatest.{BeforeAndAfter, FunSuite, Matchers}
 
 import scala.collection.mutable
-import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.Future
 import scala.language.{implicitConversions, postfixOps}
 import scala.util.Try
 
-class ExecutorSuite extends FunSuite
-  with Matchers with ScalaFutures
-  with MockFactory with BeforeAndAfter
-  with Logging {
+class ExecutorSuite extends ExecutorSuiteHelper {
 
   import com.didichuxing.horoscope.runtime.Implicits.{builtin, asDocument}
   import scala.concurrent.ExecutionContext.Implicits.global
   import scala.collection.JavaConversions._
-
-  implicit val gson: Gson = new GsonBuilder()
-    .registerTypeHierarchyAdapter(classOf[Value], new ValueTypeAdapter)
-    .setPrettyPrinting()
-    .serializeNulls()
-    .create()
-
-  implicit val defaultPatience: PatienceConfig =
-    PatienceConfig(timeout = Span(10000, Seconds), interval = Span(5, Millis))
 
   class MockEnv extends Environment {
     private val flows: mutable.Map[String, Flow] = mutable.Map()
@@ -71,9 +50,11 @@ class ExecutorSuite extends FunSuite
       compositors.getOrElseUpdate((factory, code), mock[Compositor])
     }
 
-    implicit def buildCompositor: CompositorDef => Compositor = { definition =>
+    implicit def buildCompositor: (String, CompositorDef) => Compositor = { (flow, definition) =>
       compositor(definition.getFactory, definition.getContent)
     }
+
+    override def getController(flow: String): Option[ExperimentController] = None
 
     override def getFlowByName(name: String): Flow = {
       flows.getOrElseUpdate(name, {
@@ -93,52 +74,14 @@ class ExecutorSuite extends FunSuite
     }
   }
 
-  val emptyDict: ValueDict = Value(Map.empty[String, Value])
-
   var env: MockEnv = _
-
-  var executor: FlowExecutorImpl = _
-
-  def newEvent(eventId: String, traceId: String)(flow: String, args: (String, Value)*): FlowEvent = {
-    val builder = FlowEvent.newBuilder()
-    builder.setEventId(eventId)
-    builder.setTraceId(traceId)
-    builder.setFlowName("/" + flow)
-
-    for ((key, value) <- args) {
-      builder.putArgument("@" + key, TraceVariable.newBuilder().setValue(value.as[FlowValue]).build())
-    }
-
-    builder.build()
-  }
-
-  implicit class FlowInstanceHelper(instance: FlowInstance) {
-    lazy val assigns: Map[String, FlowInstance.Assign] = {
-      val keys = instance.getAssignList.map(_.getName)
-      assert(keys.distinct.length == keys.length, instance.toString)
-      instance.getAssignList.map(a => (a.getName, a)).toMap
-    }
-
-    lazy val chooses: Map[String, FlowInstance.Choose] = {
-      val keys = instance.getChooseList.map(_.getChoice)
-      assert(keys.distinct.length == keys.length)
-      instance.getChooseList.map(c => (c.getChoice, c)).toMap
-    }
-
-    def apply(code: String): Value = {
-      Value(instance).asInstanceOf[ValueDict].eval(code)
-    }
-
-    def toJson: String = Value(instance).toJson
-  }
-
-  implicit class AssignHelper(assign: FlowInstance.Assign) {
-    def value: Value = Value(assign.getValue)
-  }
 
   before {
     env = new MockEnv()
-    executor = new FlowExecutorImpl(ConfigFactory.load(), ActorSystem("flow-test"), env)
+    executor = new FlowExecutorImpl(ConfigFactory.parseString(
+      """
+        |horoscope.flow-executor.log.detailed = true
+        |""".stripMargin), ActorSystem("flow-test"), env)
     executor.start()
   }
 
@@ -205,11 +148,11 @@ class ExecutorSuite extends FunSuite
     val event = newEvent("0", "a")("v2/composite")
     whenReady(executor.execute(event)) { instance =>
       instance("procedure[0].composite.length()").as[Int] shouldBe 3
-      instance("procedure[0].composite.a.result").as[Int] shouldBe 1
+      instance("procedure[0].assign.a").as[Int] shouldBe 1
       instance("procedure[0].composite.a.compositor").as[String] shouldBe "Read"
-      instance("procedure[0].composite.b.result").as[Int] shouldBe 2
-      instance("procedure[0].composite.b.argument.key").as[String] shouldBe "b"
-      instance("procedure[0].composite.write.argument.output").as[Int] shouldBe 3
+      instance("procedure[0].assign.b").as[Int] shouldBe 2
+      //instance("procedure[0].composite.b.argument.key").as[String] shouldBe "b"
+      //instance("procedure[0].composite.write.argument.output").as[Int] shouldBe 3
       instance("procedure[0].composite.write.compositor").as[String] shouldBe "Write"
     }
   }
@@ -244,7 +187,7 @@ class ExecutorSuite extends FunSuite
       instance("procedure[0].composite.length()").as[Int] shouldBe 1
       instance("procedure[0].composite.result.compositor").as[String] shouldBe "Concat"
       instance("procedure[0].composite.result.batch_size").as[Int] shouldBe 2
-      instance("procedure[0].composite.result.result").as[Map[String, String]] shouldBe Map("x" -> "a-1", "y" -> "b-2")
+      instance("procedure[0].assign.result").as[Map[String, String]] shouldBe Map("x" -> "a-1", "y" -> "b-2")
     }
   }
 
@@ -530,7 +473,7 @@ class ExecutorSuite extends FunSuite
 
     def run(delta: Option[Int]): Future[FlowInstance] = {
       seq += 1
-      val event = newEvent(seq.toString, "a")("/v2/transient", delta.map(d => "input_delta" -> Value(d)).toArray: _*)
+      val event = newEvent(seq.toString, "a")("v2/transient", delta.map(d => "input_delta" -> Value(d)).toArray: _*)
       executor.execute(event)
     }
 

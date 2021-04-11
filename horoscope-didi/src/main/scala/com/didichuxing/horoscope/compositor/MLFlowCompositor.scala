@@ -120,7 +120,7 @@ class MLFlowCompositorFactory(config: Config)(
    *              ${variable}: variable will be filled at runtime
    * @return
    */
-  override def create(code: String): Compositor = {
+  override def create(code: String)(resource: String => Array[Byte]): Compositor = {
     val flowConfig = CompositorUtil.parseConfigFromFlow(code)
     val restfulConfig = new RestfulCompositorConfig(config, flowConfig)
     new MLFlowCompositor(restfulConfig)

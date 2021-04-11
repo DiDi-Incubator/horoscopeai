@@ -6,17 +6,20 @@
 
 package com.didichuxing.horoscope.core
 
+import com.didichuxing.horoscope.core.Flow.{FlowConf, LogVariable}
 import com.didichuxing.horoscope.core.FlowDslMessage.FlowDef
 import com.didichuxing.horoscope.dsl.{CompatibleBuilder, FlowBuilder}
 import com.didichuxing.horoscope.runtime.expression.{BuiltIn, Expression}
 import com.didichuxing.horoscope.util.FlowChart
+import com.didichuxing.horoscope.util.FlowConfParser._
+import com.typesafe.config.Config
 
 import scala.collection.SortedSet
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration.Duration
 import scala.language.implicitConversions
 
-class Flow(val flowDef: FlowDef)(
+class Flow(val flowDef: FlowDef, val flowConf: FlowConf)(
   val nodes: Seq[Flow.Node],
   val terminator: Flow.Terminator,
   val arguments: Map[String, Flow.Placeholder],
@@ -34,6 +37,11 @@ class Flow(val flowDef: FlowDef)(
   def isLogEnabled: Boolean = flowDef.getConfigMap.getOrElse("log", "") == "enabled"
 
   def chart: FlowChart = new FlowChart(this)
+
+  var logVariables: Seq[LogVariable] = _
+
+  val logChoices: Seq[String] = flowConf.parsedLogConf.filter(_.flow == flowDef.getName).flatMap(_.choices).distinct
+
 }
 
 object Flow {
@@ -45,17 +53,17 @@ object Flow {
   class FlowBuildException(msg: String, cause: Exception) extends Exception(msg, cause)
 
   @throws[FlowBuildException]("if fail to parse FlowDef")
-  def apply(flowDef: FlowDef)(
+  def apply(flowDef: FlowDef, flowConf: FlowConf = FlowConf())(
     implicit
-    buildCompositor: CompositorDef => Compositor,
+    buildCompositor: (String, CompositorDef) => Compositor,
     builtin: BuiltIn
   ): Flow = {
     val mode = flowDef.getConfigMap.getOrDefault("mode", "")
     val builder: Builder = mode match {
       case "compatible" =>
-        new CompatibleBuilder(flowDef)
+        new CompatibleBuilder(flowDef, flowConf)
       case _ =>
-        new FlowBuilder(flowDef)
+        new FlowBuilder(flowDef, flowConf)
     }
 
     Builder.current.set(builder)
@@ -70,6 +78,22 @@ object Flow {
         if (node.leader != null) {
           node.leader._followers += node
         }
+      }
+
+      flow.logVariables = {
+        val flowName = flowDef.getName
+        val current = flowConf.parsedLogConf.filter(_.flow == flowName).flatMap({ conf =>
+          conf.assigns.map { assign =>
+            LogVariable(assign.name, Expression(assign.expression), assign.flow, conf.flow)
+          }
+        })
+        val dependent = flowConf.parsedLogConf.flatMap({ conf =>
+          conf.assigns.filter(_.flow == flow.name).map { assign =>
+            LogVariable(assign.name, Expression(assign.expression), assign.flow, conf.flow)
+          }
+        })
+        val total = (current ++ dependent).distinct
+        total.distinct
       }
 
       flow
@@ -172,6 +196,47 @@ object Flow {
 
     override val optDeps: Set[Node] = Set.empty
   }
+
+  case class Subscribe(scope: String, flow: String, definition: SubscribeConf)(
+    val args: Map[String, Node], val condition: Option[Node], val target: Option[Node], val traffic: Bucket
+  ) extends Node {
+    override val deps: Set[Node] = args.values.toSet
+
+    override val optDeps: Set[Node] = Set.empty
+  }
+
+  case class FlowConf(logs: Seq[Config] = Nil,
+    subscriptions: Seq[Config] = Nil, experiments: Seq[Config] = Nil
+  ) {
+    def parsedLogConf: Seq[LogConf] = {
+      logs.map(_.parseLogConf()).filter(_.enabled)
+    }
+
+    def parsedSubscribeConf: Seq[SubscribeConf] = {
+      subscriptions.map(_.parseSubscribe()).filter(_.enabled)
+    }
+
+    // only support at most one experiment in one flow
+    def enabledExperiment: Option[String] = {
+      experiments.find(_.getBoolean("enabled")).map(_.getString("name"))
+    }
+  }
+
+  case class LogConf(flow: String, enabled: Boolean, assigns: Seq[AssignField], choices: Seq[String])
+
+  case class AssignField(flow: String, name: String, expression: String)
+
+  case class SubscribeConf(name: String, enabled: Boolean, publisher: String, subscriber: String,
+    args: Map[String, String], condition: Option[String], target: Option[String], traffic: Bucket)
+
+  case class Bucket(lower: Int, upper: Int) {
+    def contains(value: Int): Boolean = {
+      value >= lower && value < upper
+    }
+  }
+
+  // variableName, expression, sourceFlow, sinkFlow
+  case class LogVariable(name: String, expression: Expression, from: String, to: String)
 
   sealed trait Node {
     var _leader: Terminator = _

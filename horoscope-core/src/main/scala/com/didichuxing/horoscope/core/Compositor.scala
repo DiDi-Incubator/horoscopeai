@@ -17,7 +17,7 @@ trait Compositor {
 trait CompositorFactory extends Serializable {
   def name(): String
 
-  def create(code: String): Compositor
+  def create(code: String)(resource: String => Array[Byte]): Compositor
 }
 
 object Compositor {

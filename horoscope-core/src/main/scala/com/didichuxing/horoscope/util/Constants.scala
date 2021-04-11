@@ -75,4 +75,6 @@ object Constants {
    * jython脚本
    */
   val ZK_UDF_PATH = "udf"
+
+  val ZK_CONF_PATH = "config"
 }

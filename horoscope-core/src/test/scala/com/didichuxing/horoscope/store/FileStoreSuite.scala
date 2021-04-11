@@ -4,13 +4,14 @@ import akka.http.scaladsl.testkit.ScalatestRouteTest
 import com.didichuxing.horoscope.service.storage.LocalFileStore
 import com.didichuxing.horoscope.util.Logging
 import com.typesafe.config.{Config, ConfigFactory}
-import org.scalatest.{BeforeAndAfterAll, FunSuite}
-
+import org.scalatest.{BeforeAndAfterAll, FunSuite, Ignore}
 import java.io.File
 import java.nio.file.Files
+
 import scala.collection.mutable.ListBuffer
 import scala.sys.process._
 
+@Ignore
 class FileStoreSuite extends FunSuite
   with BeforeAndAfterAll
   with ScalatestRouteTest

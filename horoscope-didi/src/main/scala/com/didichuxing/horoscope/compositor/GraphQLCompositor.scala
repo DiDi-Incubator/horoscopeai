@@ -6,33 +6,36 @@
 
 package com.didichuxing.horoscope.compositor
 
-import java.io.File
-import java.util.concurrent.{Callable, ScheduledExecutorService, TimeUnit}
+import java.util.concurrent.{ScheduledExecutorService, TimeUnit}
+
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import com.didichuxing.horoscope.core.{Compositor, CompositorFactory}
-import com.didichuxing.horoscope.runtime.{Binary, BooleanValue, NULL, NumberValue, Text, Value, ValueDict, ValueList}
+import com.didichuxing.horoscope.runtime.{Binary, NULL, NumberValue, Text, Value, ValueDict, ValueList}
 import com.didichuxing.horoscope.util.Logging
 import com.google.common.cache.{Cache, CacheBuilder}
-import com.google.common.io.Resources
 import com.typesafe.config.{Config, ConfigFactory}
+
 import scala.concurrent.{ExecutionContext, Future, Promise}
-import scala.io.Source
 import scala.util.{Failure, Success, Try}
 
 case class WrapValue(value: Value = NULL)
 
-class GraphQLCompositor(url: String, queryName: String, queryBody: Option[String], config: Config)
-                       (implicit actorSystem: ActorSystem, actorMaterializer: ActorMaterializer,
-                        executionContext: ExecutionContext, scheduleExecutor: ScheduledExecutorService)
-  extends RestfulClientHelper(config) with Compositor {
+class GraphQLCompositor(
+  queryName: String,
+  queryBody: Option[String],
+  resultConfig: RestfulCompositorConfig
+)(implicit actorSystem: ActorSystem,
+  actorMaterializer: ActorMaterializer,
+  executionContext: ExecutionContext,
+  scheduleExecutor: ScheduledExecutorService
+) extends RestfulClientHelper(resultConfig.config) with Compositor {
 
-  val cacheKey = Try {
-    config.getString("cache.key")
-  }.getOrElse("")
-  val cacheTTL = Try {
-    config.getInt("cache.ttl")
-  }.getOrElse(60)
+  private val graphQLConfig = resultConfig.config
+
+  private val cacheKey = Try(graphQLConfig.getString("cache.key")).getOrElse("")
+  private val cacheTTL = Try(graphQLConfig.getInt("cache.ttl")).getOrElse(60)
+
   val cache: Cache[String, WrapValue] = CacheBuilder.newBuilder()
     .maximumSize(100000)
     .concurrencyLevel(128)
@@ -79,14 +82,14 @@ class GraphQLCompositor(url: String, queryName: String, queryBody: Option[String
 
   /** 调用graphql服务查询数据，并根绝查询到的'非空'数据设置cache */
   def graphQuery(args: ValueDict, promise: Promise[Value]): Unit = {
-    val ql = if (queryBody.isDefined) queryBody else DefaultGraphQLQueryStore.getGraphQL(queryName)
+    val ql = queryBody
     if (ql.isEmpty) {
       error(("msg", "query not found"), ("query name", queryName))
       promise.failure(new NoSuchElementException(s"query '${queryName}' not found"))
     } else {
       debug(("msg", "graphQL query"), ("query", ql.get))
       val body = Value(Map("query" -> ql.get))
-      doPost(url)(body.updated("variables", args)).onComplete {
+      doPost(resultConfig.getServiceUrl)(body.updated("variables", args)).onComplete {
         case Success(value) =>
           try {
             debug(("msg", "graphQL query data"), ("data", value.toJson))
@@ -125,80 +128,52 @@ class GraphQLCompositor(url: String, queryName: String, queryBody: Option[String
   def isEmpty(value: Value): Boolean = value match {
     case NULL => true
     case v: Binary => v.length == 0
-    case v: ValueList => {
-      !v.iterator.exists(vl => {
-        !isEmpty(vl._2)
-      })
-    }
-    case v: ValueDict => {
-      !v.iterator.exists(vl => {
-        !isEmpty(vl._2)
-      })
-    }
+    case v: ValueList =>
+      v.iterator.forall(vl => isEmpty(vl._2))
+    case v: ValueDict =>
+      v.iterator.forall(vl => isEmpty(vl._2))
     case _ => false
   }
 
 }
 
-class GraphQLCompositorFactory(compositorConfig: Config)
-                              (implicit actorSystem: ActorSystem,
-                               actorMaterializer: ActorMaterializer,
-                               executionContext: ExecutionContext,
-                               scheduleExecutor: ScheduledExecutorService) extends CompositorFactory with Logging {
+class GraphQLCompositorFactory(
+  compositorConfig: Config
+)(implicit actorSystem: ActorSystem,
+  actorMaterializer: ActorMaterializer,
+  executionContext: ExecutionContext,
+  scheduleExecutor: ScheduledExecutorService) extends CompositorFactory with Logging {
 
   override def name(): String = {
     "graphql"
   }
 
-  override def create(code: String): Compositor = {
+  override def create(code: String)(resource: String => Array[Byte]): Compositor = {
     val lines = code.lines
-    //line 1: post url path
+    // line 1: post url path
     val path = lines.take(1).mkString
     val flowConfig = CompositorUtil.parseConfigFromFlow(path)
-    val restfulConfig = new RestfulCompositorConfig(compositorConfig, flowConfig)
-    val url = restfulConfig.getServiceUrl
-    val queryName = Try(restfulConfig.getModelName).getOrElse("")
-    //line 2: header config
-    val body = lines.toList
-    if (body.size == 0) {
-      new GraphQLCompositor(url, queryName, None, compositorConfig)
+    val remaining = lines.toList
+    // line 2: header config
+    val graphQLConfig = if (remaining.nonEmpty && remaining.head.startsWith("header")) {
+      ConfigFactory.parseString(
+        s"{${remaining.head.replace("header", "").trim.split(";").mkString("\n")}}"
+      )
     } else {
-      val (graphQLConfig, queryBody) = if (body.head.startsWith("header")) {
-        (
-          ConfigFactory.parseString("{" + body.head.replace("header", "").trim.split(";").mkString("\n") + "}"),
-          if (body.tail.size == 0) None else Some(body.tail.mkString("\n"))
-        )
-      } else {
-        (
-          ConfigFactory.empty(),
-          if (body.size == 0) None else Some(body.mkString("\n"))
-        )
-      }
-      val config = compositorConfig.withFallback(graphQLConfig)
-      new GraphQLCompositor(url, queryName, queryBody, config)
+      ConfigFactory.empty()
     }
+
+    val restfulConfig = new RestfulCompositorConfig(compositorConfig.withFallback(graphQLConfig), flowConfig)
+    val queryName = Try(restfulConfig.getModelName).getOrElse("")
+    // remaining: query body
+    val queryBody = if (remaining.nonEmpty && remaining.tail.nonEmpty) {
+      Some(remaining.tail.mkString("\n"))
+    } else if (resource(queryName) != null) {
+      Some(new String(resource(queryName)))
+    } else {
+      None
+    }
+    new GraphQLCompositor(queryName, queryBody, restfulConfig)
   }
 
-}
-
-trait GraphQLQueryStore {
-  def getGraphQL(query: String): Option[String]
-}
-
-object DefaultGraphQLQueryStore extends GraphQLQueryStore with Logging {
-
-  private val rootPath = Resources.getResource("graphql").getFile
-  private val root = new File(rootPath)
-  private val fileList = root.listFiles().filter(_.isFile)
-  private val graphQLList: Map[String, String] = fileList
-    .map(file => {
-      val filename = file.getName
-      info(("msg", s"load graphql def ${filename}"))
-      val content = Source.fromFile(file.getAbsolutePath).getLines.mkString
-      filename -> content
-    }).toMap
-
-  override def getGraphQL(queryName: String): Option[String] = {
-    graphQLList.get(queryName)
-  }
 }

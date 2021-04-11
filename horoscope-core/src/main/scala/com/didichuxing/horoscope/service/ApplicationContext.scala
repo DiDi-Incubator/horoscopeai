@@ -7,8 +7,7 @@
 package com.didichuxing.horoscope.service
 
 import akka.actor.ActorSystem
-import com.didichuxing.horoscope.core.{CompositorFactory, FlowStore, SourceFactory, TraceStore}
-import com.didichuxing.horoscope.core.OdsLogger
+import com.didichuxing.horoscope.core.{ConfigStore, FileStore, FlowStore, OdsLogger, SourceFactory, TraceStore}
 import com.didichuxing.horoscope.runtime.FlowExecutor
 import com.didichuxing.horoscope.runtime.expression.BuiltIn
 import com.didichuxing.horoscope.service.api.HttpServer
@@ -34,13 +33,14 @@ class ApplicationContext {
   private var as: ActorSystem = _
   private var tt: TimeTrigger = _
   private var sec: SourceExecutionContext = _
-  private val cf: mutable.Map[String, CompositorFactory] = mutable.Map[String, CompositorFactory]()
   private var bi: BuiltIn = _
   private var fs: FlowStore = _
   private var rm: ResourceManager = _
   private var zkc: ZkClient = _
   private var hss: HttpServer = _
   private var ods: OdsLogger = _
+  private var fls: FileStore = _
+  private var cfs: ConfigStore = _
 
   def withResourceManager(resourceManager: ResourceManager): this.type = {
     rm = resourceManager
@@ -74,11 +74,6 @@ class ApplicationContext {
 
   def withSourceFactory(name: String, factory: SourceFactory): this.type = {
     sf.put(name, factory)
-    this
-  }
-
-  def withCompositorFactory(name: String, factory: CompositorFactory): this.type = {
-    cf.put(name, factory)
     this
   }
 
@@ -122,6 +117,16 @@ class ApplicationContext {
     this
   }
 
+  def withFileStore(fileStore: FileStore): this.type = {
+    fls = fileStore
+    this
+  }
+
+  def withConfigStore(configStore: ConfigStore): this.type = {
+    cfs = configStore
+    this
+  }
+
   def config: Config = cfg
 
   def sourceFactories: Map[String, SourceFactory] = sf.toMap
@@ -140,8 +145,6 @@ class ApplicationContext {
 
   def traceStore: TraceStore = ts
 
-  def compositorFactories: Map[String, CompositorFactory] = cf.toMap
-
   def builtIn: BuiltIn = bi
 
   def flowStore: FlowStore = fs
@@ -153,6 +156,10 @@ class ApplicationContext {
   def httpServer: HttpServer = hss
 
   def odsLogger: OdsLogger = ods
+
+  def fileStore: FileStore = fls
+
+  def configStore: ConfigStore = cfs
 }
 
 object ApplicationContext {

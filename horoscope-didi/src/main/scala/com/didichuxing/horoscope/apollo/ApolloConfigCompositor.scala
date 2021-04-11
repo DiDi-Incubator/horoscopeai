@@ -17,7 +17,7 @@ import scala.concurrent.Future
 class ApolloConfigCompositorFactory extends CompositorFactory {
   override def name(): String = "apollo_config"
 
-  override def create(code: String): Compositor = {
+  override def create(code: String)(resource: String => Array[Byte]): Compositor = {
     try {
       val config = ConfigFactory.parseString(code)
       new ApolloConfigCompositor(config)

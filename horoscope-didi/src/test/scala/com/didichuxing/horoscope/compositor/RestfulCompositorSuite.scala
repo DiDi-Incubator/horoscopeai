@@ -58,7 +58,7 @@ class RestfulCompositorSuite extends FunSuite with Matchers with BeforeAndAfterA
     val code = "get http://localhost:18089/road-close-v3/${link}"
     val valueDict = new SimpleDict(Map("link" -> Value(100000)))
     try {
-      info(new RestfulCompositorFactory(compositorConfig).create(code).composite(valueDict).await().toString)
+      info(new RestfulCompositorFactory(compositorConfig).create(code)(null).composite(valueDict).await().toString)
     } catch {
       case e: Throwable =>
         info(e.getMessage)
@@ -69,7 +69,7 @@ class RestfulCompositorSuite extends FunSuite with Matchers with BeforeAndAfterA
     val code = "post http://localhost:18089/road-close-v3\n${link}"
     val valueDict = new SimpleDict(Map("link" -> Value(100001)))
     try {
-      info(new RestfulCompositorFactory(compositorConfig).create(code).composite(valueDict).await().toString)
+      info(new RestfulCompositorFactory(compositorConfig).create(code)(null).composite(valueDict).await().toString)
     } catch {
       case e: Throwable =>
         info(e.getMessage)
@@ -80,7 +80,7 @@ class RestfulCompositorSuite extends FunSuite with Matchers with BeforeAndAfterA
     val code = "get http://10.90.31.51:8011/api/v1/publishStateService/queryPublishState?entityId=${entityId}"
     val valueDict = new SimpleDict(Map("entityId" -> Value("r#90000121443780")))
     try {
-      info(new RestfulCompositorFactory(compositorConfig).create(code).composite(valueDict).await().toString)
+      info(new RestfulCompositorFactory(compositorConfig).create(code)(null).composite(valueDict).await().toString)
     } catch {
       case e: Throwable =>
         info(e.getMessage)
@@ -92,7 +92,7 @@ class RestfulCompositorSuite extends FunSuite with Matchers with BeforeAndAfterA
     val queryRequest = new SimpleDict(
       Map("entity" -> Value("r#90000121443780"), "condition" -> new SimpleDict(Map("coolDown" -> Value("1d")))))
     try {
-      info(new RestfulCompositorFactory(compositorConfig).create(code).composite(queryRequest).await().toString)
+      info(new RestfulCompositorFactory(compositorConfig).create(code)(null).composite(queryRequest).await().toString)
     } catch {
       case e: Throwable =>
         info(e.getMessage)

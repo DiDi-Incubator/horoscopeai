@@ -116,6 +116,7 @@ class FlowExecutorImpl(
           } catch {
             case e: Throwable =>
               contextCache.invalidate(traceId)
+              logError(("msg", s"execute event failed"), ("cause", e.getMessage))
               promise.failure(e)
           }
         }

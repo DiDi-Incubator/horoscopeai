@@ -1,0 +1,28 @@
+# /v2/publish
+
+***
+    <> {
+        ? vip = @level == 1
+        => {
+            threshold <- 0.5
+        }
+
+        ? normal = true
+        => {
+            <> {
+                ? high = @level == 2
+                | middle = @level == 3
+                => {
+                    importance <~ 1
+                    threshold <- 0.75
+                }
+
+                ? low = @level == 4
+                => {
+                    threshold <- 0.9
+                }
+            }
+        }
+    }
+    result <- threshold
+***

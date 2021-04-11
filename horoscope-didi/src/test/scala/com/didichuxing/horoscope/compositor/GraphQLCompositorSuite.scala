@@ -6,7 +6,9 @@
 
 package com.didichuxing.horoscope.compositor
 
+import java.io.File
 import java.net.URI
+
 import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.Http.ServerBinding
@@ -17,9 +19,11 @@ import com.didichuxing.horoscope.runtime.convert.ValueTypeAdapter
 import com.didichuxing.horoscope.runtime.{NULL, SimpleDict, SimpleList, Text, Value}
 import com.didichuxing.horoscope.util.AsyncUtil.FutureAwait
 import com.didichuxing.horoscope.util.ThreadUtil
+import com.google.common.io.{Files, Resources}
 import com.google.gson.GsonBuilder
 import com.typesafe.config.ConfigFactory
 import org.scalatest.{BeforeAndAfterAll, FunSuite, Matchers}
+
 import scala.concurrent.{ExecutionContextExecutor, Future}
 
 class GraphQLCompositorSuite extends FunSuite with Matchers with BeforeAndAfterAll {
@@ -37,6 +41,20 @@ class GraphQLCompositorSuite extends FunSuite with Matchers with BeforeAndAfterA
   private val mockServer = "http://localhost:18089/road-close-v3"
   val uri = URI.create(mockServer)
   val mockResult = new SimpleDict(Map("confidence" -> Value(0.9), "description" -> Value("null"))).toJson
+
+  private val rootPath = Resources.getResource("graphql").getFile
+  private val root = new File(rootPath)
+  private val fileList = root.listFiles().filter(_.isFile)
+  private val graphQLList: Map[String, Array[Byte]] = fileList
+    .map(file => {
+      val filename = file.getName
+      val content = Files.toByteArray(new File(file.getAbsolutePath))
+      filename -> content
+    }).toMap
+
+  def getResource(name: String): Array[Byte] = {
+    graphQLList(name)
+  }
 
   override def beforeAll(): Unit = {
     bindFuture = {
@@ -66,7 +84,7 @@ class GraphQLCompositorSuite extends FunSuite with Matchers with BeforeAndAfterA
         |""".stripMargin
     val valueDict = Value(Map[String, Long]("order_id" -> 17695669003487L))
     try {
-      info(new GraphQLCompositorFactory(config).create(code).composite(valueDict).await().toString)
+      info(new GraphQLCompositorFactory(config).create(code)(getResource).composite(valueDict).await().toString)
     } catch {
       case e: Throwable =>
         info(e.getMessage)
@@ -79,7 +97,7 @@ class GraphQLCompositorSuite extends FunSuite with Matchers with BeforeAndAfterA
     val valueDict = new SimpleDict(Map("driver_id" -> Value(580542422972833L), "start"-> Value(1596023886),
       "end" -> Value(1596094334)))
     try {
-      info(new GraphQLCompositorFactory(config).create(code).composite(valueDict).await().toString)
+      info(new GraphQLCompositorFactory(config).create(code)(getResource).composite(valueDict).await().toString)
     } catch {
       case e: Throwable =>
         info(e.getMessage)
