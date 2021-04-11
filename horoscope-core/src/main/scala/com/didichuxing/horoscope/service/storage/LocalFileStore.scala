@@ -13,7 +13,6 @@ import com.didichuxing.horoscope.runtime.{Value, ValueDict}
 import com.didichuxing.horoscope.runtime.expression.{BuiltIn, SimpleBuiltIn}
 import com.didichuxing.horoscope.util.Logging
 import com.typesafe.config.Config
-
 import java.io.{BufferedWriter, File, IOException}
 import java.nio.charset.Charset
 import java.nio.file._
@@ -21,12 +20,13 @@ import java.nio.file.attribute.BasicFileAttributes
 import scala.collection.JavaConversions._
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Future
+import scala.util.Try
 
 class LocalFileStore(config: Config) extends FileStore with Logging {
   import LocalFileStore._
 
-  val rootPath: String = config.getString("horoscope.storage.file-store.local-root-path")
-  val fileType: List[String] = config.getStringList("horoscope.storage.file-store.type").toList
+  val rootPath: String = Try(config.getString("horoscope.storage.file-store.local-root-path")).getOrElse("")
+  val fileType: List[String] = Try(config.getStringList("horoscope.storage.file-store.type").toList).getOrElse(Nil)
 
   /**
    * @param path : pathname string
@@ -103,16 +103,12 @@ class LocalFileStore(config: Config) extends FileStore with Logging {
     if (Files.notExists(target)) Files.createFile(target)
     var writer: BufferedWriter = null
     try {
-      if(path.endsWith(".flow")) {       //文件后缀为flow，语法检验
-        require(path.endsWith(s"${checkSyntax(content).name}.flow"))
+      if (path.endsWith(".flow")) {
+        require(path.endsWith(checkSyntax(content).name + ".flow"), "wrong flow name in header")
       }
-      require(path.endsWith(checkSyntax(content).name))
       writer = Files.newBufferedWriter(target, Charset.forName("UTF-8"))
       writer.write(content)
       isUpdated = true
-    } catch {
-      case e: Exception =>
-        logging.error(s"fail to update file $path")
     } finally {
       if (writer != null) writer.close()
     }
@@ -129,18 +125,12 @@ class LocalFileStore(config: Config) extends FileStore with Logging {
   override def createFile(path: String, isDirectory: Boolean): Boolean = {
     val target = Paths.get(path)
     if (Files.notExists(target)) {
-      try {
-        if (isDirectory) {
-          Files.createDirectories(target)
-        } else {
-          Files.createFile(target)
-        }
-        true
-      } catch {
-        case e: Exception =>
-          logging.error(s"fail to create $path", e)
-          false
+      if (isDirectory) {
+        Files.createDirectories(target)
+      } else {
+        Files.createFile(target)
       }
+      true
     } else {
       false
     }

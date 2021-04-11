@@ -30,7 +30,7 @@ class ZookeeperConfigStore(curator: CuratorFramework) extends ConfigStore with T
   private val isInitialized: Semaphore = new Semaphore(0)
 
   private val tree: TreeCache = {
-    val cache = TreeCache.newBuilder(curator.usingNamespace(curator.getNamespace + "/config"), "/")
+    val cache = TreeCache.newBuilder(curator, "/")
       .setCreateParentNodes(true)
       .setExecutor(executor)
       .build()
@@ -58,30 +58,30 @@ class ZookeeperConfigStore(curator: CuratorFramework) extends ConfigStore with T
   }
 
   override def getLogConf(name: String): Config = {
-    val path = s"logConfig/$name"
+    val path = s"$LOG_TYPE/$name"
     getConfByPath(path)
   }
 
   override def getExperimentConf(name: String): Config = {
-    val path = s"experimentConfig/$name"
+    val path = s"${SUBSCRIPTION_TYPE}/$name"
     getConfByPath(path)
   }
 
   override def getSubscriptionConf(name: String): Config = {
-    val path = s"subscriptionConfig/$name"
+    val path = s"$EXPERIMENT_TYPE/$name"
     getConfByPath(path)
   }
 
   override def getLogConfList: List[Config] = {
-    getConfListByType("logConfig")
+    getConfListByType(LOG_TYPE)
   }
 
   override def getExperimentConfList: List[Config] = {
-    getConfListByType("experimentConfig")
+    getConfListByType(EXPERIMENT_TYPE)
   }
 
   override def getSubscriptionConfList: List[Config] = {
-    getConfListByType("subscriptionConfig")
+    getConfListByType(SUBSCRIPTION_TYPE)
   }
 
   override def register(listener: ConfigChangeListener): Unit = {
@@ -96,16 +96,16 @@ class ZookeeperConfigStore(curator: CuratorFramework) extends ConfigStore with T
     )
   }
 
-  private def getFullPath(configType: String, configName: String): String = s"/config/$configType/$configName"
+  private def getFullPath(configType: String, configName: String): String = s"/$configType/$configName"
 
-  private def getFullPath(path: String): String = s"/config/$path"
+  private def getFullPath(path: String): String = s"/$path"
 
   /** update operation to ZK */
   private def update(path: String, text: String): Unit = {
     val fullPath = getFullPath(path)
     val stat: Stat = curator.checkExists().forPath(fullPath)
     if (stat == null) {
-      curator.create()
+      curator.create().creatingParentsIfNeeded()
         .withMode(CreateMode.PERSISTENT)
         .forPath(fullPath, text.getBytes("UTF-8"))
     } else {
@@ -140,7 +140,7 @@ class ZookeeperConfigStore(curator: CuratorFramework) extends ConfigStore with T
     }
   }
 
-  @throws(classOf[IllegalArgumentException])
+  // @throws(classOf[IllegalArgumentException])
   private def getConfListByType(configType: String): List[Config] = {
     val result = ListBuffer[Config]()
     val fullPath = getFullPath(configType)
@@ -152,7 +152,9 @@ class ZookeeperConfigStore(curator: CuratorFramework) extends ConfigStore with T
       })
       result.toList
     } else {
-      throw new IllegalArgumentException("file not exist")
+      // throw new IllegalArgumentException("file not exist")
+      error(("get config", s"path not exist: ${fullPath}"))
+      Nil
     }
   }
 
@@ -162,7 +164,7 @@ class ZookeeperConfigStore(curator: CuratorFramework) extends ConfigStore with T
     concat(
       path(Segment) { configType =>
         get {
-          if (configType == "logConfig" || configType == "subscriptionConfig" || configType == "experimentConfig") {
+          if (configType == LOG_TYPE || configType == SUBSCRIPTION_TYPE || configType == EXPERIMENT_TYPE) {
             val contentList = getChildrenContent(configType)
             complete(HttpResponse(StatusCodes.OK, entity = contentList))
           } else {
@@ -180,7 +182,7 @@ class ZookeeperConfigStore(curator: CuratorFramework) extends ConfigStore with T
           if (configName.contains('/')) {
             complete(HttpResponse(StatusCodes.BadRequest, entity = ""))
           }
-          if (configType == "logConfig" || configType == "subscriptionConfig" || configType == "experimentConfig") {
+          if (configType == LOG_TYPE || configType == SUBSCRIPTION_TYPE || configType == EXPERIMENT_TYPE) {
             val stat: Stat = curator.checkExists().forPath(getFullPath(configType, configName))
             if (stat == null) {
               complete(HttpResponse(StatusCodes.BadRequest, entity = ""))
@@ -203,7 +205,7 @@ class ZookeeperConfigStore(curator: CuratorFramework) extends ConfigStore with T
           }
         },
         delete {
-          if (configType == "logConfig" || configType == "subscriptionConfig" || configType == "experimentConfig") {
+          if (configType == LOG_TYPE || configType == SUBSCRIPTION_TYPE || configType == EXPERIMENT_TYPE) {
             val stat: Stat = curator.checkExists().forPath(getFullPath(configType, configName))
             if (stat == null) {
               complete(HttpResponse(StatusCodes.BadRequest, entity = ""))
@@ -229,9 +231,9 @@ class ZookeeperConfigStore(curator: CuratorFramework) extends ConfigStore with T
     val path = getFullPath(configType)
     val list = curator.getChildren.forPath(path).asScala
     val typeName = configType match {
-      case "logConfig" => "log-conf"
-      case "subscriptionConfig" => "subscriptions"
-      case "experimentConfig" => "experiments"
+      case LOG_TYPE => "log-conf"
+      case SUBSCRIPTION_TYPE => "subscriptions"
+      case EXPERIMENT_TYPE => "experiments"
     }
     val result = ListBuffer[JsValue]()
     list.foreach(x => {
@@ -247,4 +249,8 @@ class ZookeeperConfigStore(curator: CuratorFramework) extends ConfigStore with T
     )
     scala.util.parsing.json.JSONObject(map).toString()
   }
+
+  val LOG_TYPE = "log"
+  val SUBSCRIPTION_TYPE = "subscription"
+  val EXPERIMENT_TYPE = "experiment"
 }

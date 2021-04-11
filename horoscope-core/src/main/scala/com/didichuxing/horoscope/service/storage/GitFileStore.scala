@@ -28,66 +28,64 @@ class GitFileStore(config: Config) extends LocalFileStore(config) with Logging {
   val centralBranch: String =
     Some(config.getString("horoscope.storage.file-store.remote-central-branch")).getOrElse("master")
 
+  private val defaultGitURL = "" // gitURL为空时, 默认指向centralRepo
   override def listFiles(gitURL: String): (String, Seq[File]) = {
-    val pathname = getPathname(gitURL)
-    super.listFiles(new File(pathname).getName)
+    val pathname = getRelativePath(gitURL)
+    super.listFiles(pathname)
   }
 
   import JsonSupport._
 
   override def api: Route = {
-
-    pathPrefix("file") {
-      concat(
-        (post & path("read")) {
-          fileReadRoute
-        },
-        (post & path("delete")) {
-          fileDeleteRoute
-        },
-        (post & path("update")) {
-          fileUpdateRoute
-        },
-        (put & path("rename")) {
-          fileRenameRoute
-        },
-        (post & path("copy")) {
-          fileCopyRoute
-        },
-        (get & path("tree")) {
-          fileTreeRoute
-        },
-        (post & path("version")) {
-          importGitRoute
-        },
-        (get & path("version")) {
-          pullRoute
-        },
-        (put & path("version")) {
-          pushRoute
-        },
-        (get & path("version" / "status")) {
-          statusRoute
-        },
-        (get & path("version" / "diff")) {
-          showDiffRoute
-        },
-        (delete & path("version" / "status")) {
-          resetDiffRoute
-        },
-        path("version" / "branches") {
-          concat(
-            get(listBranchesRoute),
-            put(createBranchRoute),
-            post(switchBranchRoute),
-            delete(deleteBranchRoute)
-          )
-        },
-        (get & path("version" / "log")) {
-          commitLogRoute
-        }
-      )
-    }
+    concat(
+      (post & path("read")) {
+        fileReadRoute
+      },
+      (post & path("delete")) {
+        fileDeleteRoute
+      },
+      (post & path("update")) {
+        fileUpdateRoute
+      },
+      (put & path("rename")) {
+        fileRenameRoute
+      },
+      (post & path("copy")) {
+        fileCopyRoute
+      },
+      (get & path("tree")) {
+        fileTreeRoute
+      },
+      (post & path("version")) {
+        importGitRoute
+      },
+      (get & path("version")) {
+        pullRoute
+      },
+      (put & path("version")) {
+        pushRoute
+      },
+      (get & path("version" / "status")) {
+        statusRoute
+      },
+      (get & path("version" / "diff")) {
+        showDiffRoute
+      },
+      (delete & path("version" / "diff")) {
+        resetDiffRoute
+      },
+      path("version" / "branches") {
+        concat(
+          get(listBranchesRoute),
+          put(createBranchRoute),
+          post(switchBranchRoute),
+          delete(deleteBranchRoute)
+        )
+      },
+      (get & path("version" / "log")) {
+        commitLogRoute
+      }
+    )
   }
 
   val fileTreeRoute: Route = parameter("git") {
@@ -201,7 +199,7 @@ class GitFileStore(config: Config) extends LocalFileStore(config) with Logging {
       run {
         json.asJsObject.getFields("git") match {
           case Seq(JsString(git)) =>
-            val gitURL = if (git.equals("default")) { //git参数为default指默认centralRepo
+            val gitURL = if (git.equals(defaultGitURL)) { //git参数为default指默认centralRepo
               centralRepo
             } else {
               s"https://$git"
@@ -344,10 +342,18 @@ class GitFileStore(config: Config) extends LocalFileStore(config) with Logging {
     }
   }
 
+  def getRelativePath(gitURL: String): String = {
+    val url = if (gitURL == defaultGitURL) centralRepo else gitURL
+    val suffix = url.trim.split("/").takeRight(2)
+    val userName = suffix(0)
+    val projectName = suffix(1).substring(0, suffix(1).lastIndexOf("."))
+    s"$userName/$projectName"
+  }
+
   //根据git连接解析出文件(夹)绝对路径
   def getPathname(gitURL: String, relativePath: String = ""): String = {
     var pathname = ""
-    if (gitURL.equals("default")) {
+    if (gitURL.equals(defaultGitURL)) {
       pathname = gitURL2Workspace(centralRepo, rootPath)
     } else {
       pathname = gitURL2Workspace(gitURL, rootPath)
@@ -358,7 +364,7 @@ class GitFileStore(config: Config) extends LocalFileStore(config) with Logging {
   //根据git链接解析出文件(夹)绝对路径，并验证当前Branch
   def getPathnameOnBranch(gitURL: String, branch: String, relativePath: String = ""): Option[String] = {
     var url = ""
-    if (gitURL.equals("default")) {
+    if (gitURL.equals(defaultGitURL)) {
       url = gitURL2Workspace(centralRepo, rootPath)
       Some(url.concat(relativePath))
     } else {
@@ -372,7 +378,7 @@ class GitFileStore(config: Config) extends LocalFileStore(config) with Logging {
   }
 
   def getRemote(gitURL: String): String = {
-    if (gitURL.equals("default") || s"https://$gitURL".equals(centralRepo)) {
+    if (gitURL.equals(defaultGitURL) || s"https://$gitURL".equals(centralRepo)) {
       "origin" // gitURL为空或主仓库
     } else {
       "upstream"
@@ -382,10 +388,10 @@ class GitFileStore(config: Config) extends LocalFileStore(config) with Logging {
 }
 
 case class Branches(
-                     head: String = "",
-                     master: String = "",
-                     branch: Seq[String] = Seq.empty
-                   )
+  head: String = "",
+  master: String = "",
+  branch: Seq[String] = Seq.empty
+)
 
 object JsonSupport extends DefaultJsonProtocol with SprayJsonSupport {
   implicit val branchFormat: JsonFormat[Branches] = jsonFormat3(Branches)

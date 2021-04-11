@@ -48,7 +48,7 @@ class ZookeeperConfigStoreSuite extends FunSuite
   }
 
   def putByCurator():Unit = {
-    val path = "/config/config/logConfig/test"
+    val path = "/config/log/test"
     val text = """{"name" : "test"}"""
     val stat = curator.checkExists().forPath(path)
     if (stat == null) {
@@ -74,7 +74,7 @@ class ZookeeperConfigStoreSuite extends FunSuite
     Thread.sleep(1000)
 
     // get
-    new String(curator.getData.forPath("/config/config/logConfig/test")) should === ("""{"name" : "test"}""")
+    new String(curator.getData.forPath("/config/log/test")) should === ("""{"name" : "test"}""")
   }
 
   test ("list of children") {
@@ -83,7 +83,7 @@ class ZookeeperConfigStoreSuite extends FunSuite
     Thread.sleep(1000)
 
 
-    val configTypePath = "/config/config/logConfig"
+    val configTypePath = "/config/log"
     val list = curator.getChildren().forPath(configTypePath).asScala
     list shouldBe a[mutable.Buffer[String]]
   }
