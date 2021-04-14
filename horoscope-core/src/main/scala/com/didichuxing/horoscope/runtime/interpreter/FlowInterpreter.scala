@@ -250,22 +250,24 @@ class FlowInterpreter(
 
     val choices: ListBuffer[String] = ListBuffer.empty
 
-    lazy val variableContext: Map[String, Context] = {
+    lazy val variableContexts: Map[String, Context] = {
       nodes.flatMap {
         case l: LoadContext => Some(l.load.name, l)
         case u: UpdateContext => Some((u.update.name, u))
         case e: EvaluateContext => Some((e.name, e))
         case p: PlaceholderContext => Some((p.name, p))
+        case c: CompositeContext => Some((c.name, c))
+        case bc: BatchCompositeContext => Some((bc.name, bc))
         case _ => None
       }
     }.toMap
 
     def collect(): Unit = {
-      val context = variableContext.filter(_._2.isReady).mapValues(_.value)
       flow.logVariables.filter(_.from == flow.name).foreach { l =>
         l.expression.references.foreach { ref =>
-          if (context.contains(ref.identifier)) {
-            val value = context(ref.identifier)
+          val context = variableContexts.get(ref.identifier)
+          if (context.isDefined && context.get.isReady) {
+            val value = context.get.value
             Log.addVariable(Log.VariableKey(ref.identifier, l.from), procedure.scopes, value)
           }
         }
@@ -369,8 +371,8 @@ class FlowInterpreter(
     lazy val exptDependencies: Map[String, Context] = {
       (expressions - "@event_id").values.flatMap({ expression =>
         expression.references.flatMap({ ref =>
-          if (procedure.variableContext.contains(ref.identifier)) {
-            Some((ref.identifier, procedure.variableContext(ref.identifier)))
+          if (procedure.variableContexts.contains(ref.identifier)) {
+            Some((ref.identifier, procedure.variableContexts(ref.identifier)))
           } else {
             logging.error(s"expression reference variable: ${ref.identifier} doesn't exist" +
               s" in context of flow: ${flow} ")
