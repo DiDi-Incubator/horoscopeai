@@ -52,8 +52,8 @@ object GitUtil extends Logging {
         .!(commandLogger.gitCommandLogger)
       if (exitCode == 0) {
         Some(true)
-      }else{
-        Some(commandLogger.errorResult.toList.mkString("","\n",""))
+      } else {
+        Some(commandLogger.errorResult.toList.mkString("", "\n", ""))
       }
     } catch {
       case e: Exception =>
@@ -62,7 +62,7 @@ object GitUtil extends Logging {
     }
   }
 
-  def updateRepo(path: String, remoteBranch: String, remote: String,  name: String, pw: String): String = {
+  def updateRepo(path: String, remoteBranch: String, remote: String, name: String, pw: String): String = {
     val message = new StringBuffer()
     try {
       val repo = new FileRepository(path)
@@ -73,10 +73,10 @@ object GitUtil extends Logging {
         .setCredentialsProvider(new UsernamePasswordCredentialsProvider(name, pw))
       val pullResult = pull.call()
       if (pullResult.getMergeResult != null) {
-        if(pullResult.getMergeResult.getMergeStatus.equals(MergeStatus.CONFLICTING)){
+        if (pullResult.getMergeResult.getMergeStatus.equals(MergeStatus.CONFLICTING)) {
           val conflict = pullResult.getMergeResult.getConflicts.asScala.keySet
           message.append("[CONFLICT]: \n")
-          conflict.foreach(f=>message.append(s"$f \n"))
+          conflict.foreach(f => message.append(s"$f \n"))
         }
         pullResult.getMergeResult
         message.append(s"${pullResult.getMergeResult.toString} \n")
@@ -88,7 +88,7 @@ object GitUtil extends Logging {
       case e: CheckoutConflictException =>
         logging.error(s"fail to update in $path", e)
         message.append("[CONFLICT]: \n")
-        message.append(e.getConflictingPaths.asScala.toList.mkString("","\n",""))
+        message.append(e.getConflictingPaths.asScala.toList.mkString("", "\n", ""))
       case e: GitAPIException =>
         logging.error(s"fail to update in $path", e)
         message.append(e.toString)
@@ -99,7 +99,7 @@ object GitUtil extends Logging {
     message.toString
   }
 
-  def pushRepo(message: String, name: String, pw: String, path: String, branch:String,
+  def pushRepo(message: String, name: String, pw: String, path: String, branch: String,
                remote: String, refSpec: String): String = {
     val res = new StringBuffer()
     try {
@@ -260,8 +260,8 @@ object GitUtil extends Logging {
       val exitCode = Process(Seq("git", "checkout", branch), new File(path)).!(commandLogger.gitCommandLogger)
       if (exitCode == 0) {
         Some(true)
-      }else{
-        Some(commandLogger.errorResult.toList.mkString("","\n",""))
+      } else {
+        Some(commandLogger.errorResult.toList.mkString("", "\n", ""))
       }
     } catch {
       case e: Exception =>
@@ -278,13 +278,13 @@ object GitUtil extends Logging {
       if (isExists.isEmpty) {
         val exitCode = Process(Seq("git", "branch", branch), new File(path))
           .!(commandLogger.gitCommandLogger)
-        if (exitCode == 0){
+        if (exitCode == 0) {
           Some(true)
-        }else{
-          Some(commandLogger.errorResult.toList.mkString("","\n",""))
+        } else {
+          Some(commandLogger.errorResult.toList.mkString("", "\n", ""))
         }
-      }else{
-        Some(commandLogger.errorResult.toList.mkString("","\n",""))
+      } else {
+        Some(commandLogger.errorResult.toList.mkString("", "\n", ""))
       }
     } catch {
       case e: Exception =>
@@ -301,13 +301,13 @@ object GitUtil extends Logging {
       if (isExists.nonEmpty) {
         val exitCode = Process(Seq("git", "branch", "-D", branch), new File(path))
           .!(commandLogger.gitCommandLogger)
-        if (exitCode == 0){
+        if (exitCode == 0) {
           Some(true)
-        }else{
-          Some(commandLogger.errorResult.toList.mkString("","\n",""))
+        } else {
+          Some(commandLogger.errorResult.toList.mkString("", "\n", ""))
         }
-      }else{
-        Some(commandLogger.errorResult.toList.mkString("","\n",""))
+      } else {
+        Some(commandLogger.errorResult.toList.mkString("", "\n", ""))
       }
     } catch {
       case e: Exception =>
@@ -332,4 +332,5 @@ object GitUtil extends Logging {
     val gitCommandLogger: ProcessLogger = ProcessLogger(line => outputResult.append(line),
       line => errorResult.append(line))
   }
+
 }
