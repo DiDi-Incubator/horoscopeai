@@ -216,11 +216,12 @@ class GitFileStore(config: Config) extends LocalFileStore(config) with Logging {
               case true =>
                 setUpstream(getPathname(gitURL), centralRepo).getOrElse(false) match {
                   case true => true
-                  case s: String => HttpResponse(400, entity = s)
+                  case s: String => HttpResponse(200, entity = s)
                 }
               case false =>
                 HttpResponse(400, entity = s"not a valid git URL")
               case s: String =>
+                super.deleteFile(dir)
                 HttpResponse(400, entity = s)
             }
           case _ => HttpResponse(406, entity = s"lack parameters") //incorrect param
