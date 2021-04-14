@@ -13,11 +13,11 @@ import com.didichuxing.horoscope.runtime.{Value, ValueDict}
 import com.didichuxing.horoscope.runtime.expression.{BuiltIn, SimpleBuiltIn}
 import com.didichuxing.horoscope.util.Logging
 import com.typesafe.config.Config
+
 import java.io.{BufferedWriter, File, IOException}
 import java.nio.charset.Charset
 import java.nio.file._
 import java.nio.file.attribute.BasicFileAttributes
-
 import scala.collection.JavaConversions._
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Future
@@ -27,7 +27,10 @@ class LocalFileStore(config: Config) extends FileStore with Logging {
   import LocalFileStore._
 
   val rootPath: String = Try(config.getString("horoscope.storage.file-store.local-root-path")).getOrElse("")
-  val fileType: List[String] = Try(config.getStringList("horoscope.storage.file-store.type").toList).getOrElse(Nil)
+  val fileType: List[String] = Try(config.getStringList("horoscope.storage.file-store.type").toList)
+    .getOrElse(Nil)
+  val ignoreFiles: List[String] = Try(config.getStringList("horoscope.storage.file-store.ignore-files").toList)
+    .getOrElse(Nil)
 
   /**
    * @param path : pathname string
@@ -50,7 +53,7 @@ class LocalFileStore(config: Config) extends FileStore with Logging {
     try {
       Files.walk(Paths.get(pathname))
         .iterator()
-        .filter(p => validFile(p.toString, fileType))
+        .filter(p => validFile(p.toString, fileType,ignoreFiles))
         .foreach(p => list.append(p.toFile))
     } catch {
       case e: Exception =>
@@ -75,8 +78,8 @@ class LocalFileStore(config: Config) extends FileStore with Logging {
         Files.walk(p, 1)
           .skip(1) //skip itself
           .iterator()
-          .filter(p => (Files.isDirectory(p) && !p.getFileName.toString.startsWith("."))
-            || validFile(p.toString, fileType))
+          .filter(p => if(Files.isDirectory(p)) !p.getFileName.toString.startsWith(".") else true)
+          .filter(p => validFile(p.toString, fileType, ignoreFiles))
           .foreach {
             child =>
               children.append(walkFile(segments :+ child.getFileName.toString, prefix))
@@ -110,7 +113,7 @@ class LocalFileStore(config: Config) extends FileStore with Logging {
       writer = Files.newBufferedWriter(target, Charset.forName("UTF-8"))
       writer.write(content)
       isUpdated = true
-    } finally {
+    }finally {
       if (writer != null) writer.close()
     }
     isUpdated
@@ -237,9 +240,14 @@ class LocalFileStore(config: Config) extends FileStore with Logging {
     done
   }
 
-  def validFile(path: String, validType: List[String]): Boolean = {
-    val suffix = path.split('.').lastOption.getOrElse("")
-    validType.contains(suffix)
+  def validFile(path: String, validType: List[String], ignoreFiles: List[String] = Nil): Boolean = {
+    val p = Paths.get(path)
+    if(ignoreFiles.contains(p.getFileName.toString)) {
+      false
+    }
+    else {
+      if(Files.isDirectory(p)) true else validType.contains(path.split('.').lastOption.getOrElse(""))
+    }
   }
 
 }
@@ -253,7 +261,6 @@ object LocalFileStore{
         Future.failed(new NotImplementedError())
       }
     }
-
     // scalastyle:off
     implicit val builtin: BuiltIn = new SimpleBuiltIn(Map.empty, Map.empty)
 

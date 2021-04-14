@@ -59,7 +59,7 @@ class GitFileStore(config: Config) extends LocalFileStore(config) with Logging {
       (post & path("version")) {
         importGitRoute
       },
-      (get & path("version")) {
+      (post & path("version" / "update")) {
         pullRoute
       },
       (put & path("version")) {
@@ -149,7 +149,12 @@ class GitFileStore(config: Config) extends LocalFileStore(config) with Logging {
                       false
                     }
                   } else {
-                    updateFile(p, content)
+                    try {
+                      updateFile(p, content)
+                    }catch {
+                      case e:Exception =>
+                        HttpResponse(400,e.toString)
+                    }
                   }
                 case _ => HttpResponse(400, entity = s"on incorrect branch ${branName}")
               }
@@ -197,42 +202,65 @@ class GitFileStore(config: Config) extends LocalFileStore(config) with Logging {
   val importGitRoute: Route = entity(as[JsValue]) {
     json =>
       run {
-        json.asJsObject.getFields("git") match {
-          case Seq(JsString(git)) =>
+        json.asJsObject.getFields("git","userName","password") match {
+          case Seq(JsString(git), JsString(userName), JsString(password)) =>
             val gitURL = if (git.equals(defaultGitURL)) { //git参数为default指默认centralRepo
               centralRepo
             } else {
               s"https://$git"
             }
-            val imported = importRepo(gitURL, getPathname(gitURL))
-            if (imported && !gitURL.equals(centralRepo)) {
-              setUpstream(getPathname(gitURL), centralRepo)
+            val dir = getPathname(gitURL)
+            val imported = importRepo(gitURL, dir ,userName, password).getOrElse(false)
+            imported match {
+              case true =>
+                setUpstream(getPathname(gitURL), centralRepo).getOrElse(false) match {
+                  case true => true
+                  case s: String => HttpResponse(400, entity = s)
+                }
+              case false =>
+                HttpResponse(400, entity = s"not a valid git URL")
+              case s:String =>
+                HttpResponse(400, entity = s)
             }
-            imported
           case _ => HttpResponse(406, entity = s"lack parameters") //incorrect param
         }
       }
   }
 
-
   val pullRoute: Route =
-    parameter("git") {
-      git => {
+    entity(as[JsValue]) {
+      json =>
         run {
-          val dir = getPathname(git)
-          val remote = getRemote(git)
-          updateRepo(dir, centralBranch, remote)
+          json.asJsObject.getFields("git","userName","password") match {
+            case Seq(JsString(git), JsString(userName), JsString(password)) =>
+              val dir = getPathname(git)
+              val remote = getRemote(git)
+              updateRepo(s"$dir/.git", centralBranch, remote,userName,password)
+            case _ => HttpResponse(406, entity = s"lack parameters") //incorrect param
+          }
         }
-      }
     }
 
   val pushRoute: Route = parameter("git") { git => {
     entity(as[JsValue]) { json =>
       run {
-        json.asJsObject.getFields("commitMessage", "userName", "password") match {
-          case Seq(JsString(commitMessage), JsString(userName), JsString(password)) =>
+        json.asJsObject.getFields(
+          "pushTarget", "commitMessage", "userName", "password", "branchName") match {
+          case Seq(JsString(pushTarget), JsString(commitMessage), JsString(userName),
+          JsString(password), JsString(branchName)) =>
             val dir = getPathname(git)
-            pushRepo(commitMessage, userName, password, dir.concat("/.git"))
+            var remote = "origin"
+            var refSpec = branchName
+            pushTarget match {
+              case "upstream" =>
+                remote = "upstream"
+                refSpec = s"$branchName:refs/for/master"
+              case "origin" =>
+                if(branchName.equals("master")) {
+                  refSpec = "master:refs/for/master"
+                }
+            }
+            pushRepo(commitMessage, userName, password, dir.concat("/.git"), branchName,remote, refSpec)
           case _ => HttpResponse(406, entity = s"lack parameters")
         }
       }
@@ -246,7 +274,6 @@ class GitFileStore(config: Config) extends LocalFileStore(config) with Logging {
         statusRepo(getPathname(git))
       }
   }
-
 
   val showDiffRoute: Route = parameter("git") {
     git =>
@@ -262,7 +289,6 @@ class GitFileStore(config: Config) extends LocalFileStore(config) with Logging {
       }
   }
 
-
   val listBranchesRoute: Route = parameter("git") {
     git =>
       run {
@@ -277,7 +303,11 @@ class GitFileStore(config: Config) extends LocalFileStore(config) with Logging {
           run {
             json.asJsObject.getFields("branchName") match {
               case Seq(JsString(branchName)) =>
-                switchBranch(getPathname(git), branchName)
+                switchBranch(getPathname(git), branchName).getOrElse(false) match {
+                  case true => true
+                  case false => false
+                  case s: String => HttpResponse(400, entity = s)
+                }
               case _ => HttpResponse(406, entity = s"lack parameters") //incorrect param
             }
           }
@@ -292,7 +322,11 @@ class GitFileStore(config: Config) extends LocalFileStore(config) with Logging {
           run {
             json.asJsObject.getFields("branchName") match {
               case Seq(JsString(branchName)) =>
-                createBranch(getPathname(git), branchName)
+                createBranch(getPathname(git), branchName).getOrElse(false) match {
+                  case true => true
+                  case false => false
+                  case s: String => HttpResponse(400, entity = s)
+                }
               case _ => HttpResponse(406, entity = s"lack parameters")
             }
           }
@@ -307,7 +341,11 @@ class GitFileStore(config: Config) extends LocalFileStore(config) with Logging {
           run {
             json.asJsObject.getFields("branchName") match {
               case Seq(JsString(branchName)) =>
-                deleteBranch(getPathname(git), branchName)
+                deleteBranch(getPathname(git), branchName).getOrElse(false) match {
+                  case true => true
+                  case false => false
+                  case s: String => HttpResponse(400, entity = s)
+                }
               case _ => HttpResponse(406, entity = s"lack parameters") //incorrect param
             }
           }
@@ -388,9 +426,9 @@ class GitFileStore(config: Config) extends LocalFileStore(config) with Logging {
 }
 
 case class Branches(
-  head: String = "",
-  master: String = "",
-  branch: Seq[String] = Seq.empty
+   head: String = "",
+   master: String = "",
+   branch: Seq[String] = Seq.empty
 )
 
 object JsonSupport extends DefaultJsonProtocol with SprayJsonSupport {

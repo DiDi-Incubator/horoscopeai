@@ -19,7 +19,7 @@ class FileStoreSuite extends FunSuite
   val config: Config = ConfigFactory.parseString(
     s"""
        |horoscope.storage.file-store.local-root-path = "./horoscope-core/src/test/resources/flow"
-       |horoscope.storage.file-store.type = ["flow","graphQL","py"]
+       |horoscope.storage.file-store.type = ["flow","graphql","py"]
      """.stripMargin)
   val store = new LocalFileStore(config)
   val outputResult: ListBuffer[String] = ListBuffer[String]()

@@ -8,6 +8,8 @@ package com.didichuxing.horoscope.util
 
 import com.didichuxing.horoscope.service.storage.Branches
 import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.api.MergeResult._
+import org.eclipse.jgit.api.errors._
 import org.eclipse.jgit.internal.storage.file.FileRepository
 import org.eclipse.jgit.revwalk.RevCommit
 import org.eclipse.jgit.transport.{PushResult, RefSpec, UsernamePasswordCredentialsProvider}
@@ -19,78 +21,102 @@ import scala.collection.mutable.ListBuffer
 import scala.sys.process.{Process, ProcessLogger}
 
 object GitUtil extends Logging {
-  def importRepo(gitURL: String, repoDir: String): Boolean = {
-    var done = false
-    if (gitURL.endsWith(".git")) {
-      try {
-        val dir = Files.createDirectories(Paths.get(repoDir))
-        if (dir.toFile.listFiles().isEmpty) {
-          Git.cloneRepository.setURI(gitURL).setDirectory(dir.toFile).call
-        }
-        done = true
-      } catch {
-        case e: Exception =>
-          logging.error("fail to import", e)
+  def importRepo(gitURL: String, repoDir: String, name: String, pw: String): Option[Any] = {
+    try {
+      require(gitURL.endsWith(".git"))
+      val dir = Files.createDirectories(Paths.get(repoDir))
+      if (dir.toFile.listFiles().isEmpty) {
+        Git.cloneRepository.setURI(gitURL).setDirectory(dir.toFile)
+          .setCredentialsProvider(new UsernamePasswordCredentialsProvider(name, pw))
+          .call
       }
+      Some(true)
+    } catch {
+      case e: IllegalArgumentException =>
+        logging.error("fail to import", e)
+        Some("invalid gitURL")
+      case e: TransportException =>
+        logging.error(s"fail to import", e)
+        Some(e.toString)
+      case e: Exception =>
+        logging.error("fail to import", e)
+        Some(e.toString)
     }
-    done
   }
 
   //设置upstream仓库
-  def setUpstream(path: String, gitURL: String): Boolean = {
-    var done = false
+  def setUpstream(path: String, gitURL: String): Option[Any] = {
     val commandLogger = GitCommandLogger()
     try {
       val exitCode = Process(Seq("git", "remote", "add", "upstream", gitURL), new File(path))
         .!(commandLogger.gitCommandLogger)
       if (exitCode == 0) {
-        done = true
+        Some(true)
+      }else{
+        Some(commandLogger.errorResult.toList.mkString("","\n",""))
       }
     } catch {
       case e: Exception =>
         logging.error(s"fail to set upstream in $path", e)
+        Some(e.toString)
     }
-    done
   }
 
-  def updateRepo(path: String, remoteBranch: String, remote: String): String = {
+  def updateRepo(path: String, remoteBranch: String, remote: String,  name: String, pw: String): String = {
     val message = new StringBuffer()
-    val commandLogger = GitCommandLogger()
     try {
-      val exitCode = Process(Seq("git", "pull", remote, remoteBranch, "--stat"), new File(path))
-        .!(commandLogger.gitCommandLogger)
-      exitCode match {
-        case 0 => message.append(commandLogger.errorResult.toList.mkString("", "\n", "\n"))
-          .append(commandLogger.outputResult.toList.mkString("", "\n", ""))
-        case _ => message.append(commandLogger.errorResult.toList.mkString("", "\n", ""))
+      val repo = new FileRepository(path)
+      val git: Git = new Git(repo)
+      val pull = git.pull()
+        .setRemote(remote)
+        .setRemoteBranchName(remoteBranch)
+        .setCredentialsProvider(new UsernamePasswordCredentialsProvider(name, pw))
+      val pullResult = pull.call()
+      if (pullResult.getMergeResult != null) {
+        if(pullResult.getMergeResult.getMergeStatus.equals(MergeStatus.CONFLICTING)){
+          val conflict = pullResult.getMergeResult.getConflicts.asScala.keySet
+          message.append("[CONFLICT]: \n")
+          conflict.foreach(f=>message.append(s"$f \n"))
+        }
+        pullResult.getMergeResult
+        message.append(s"${pullResult.getMergeResult.toString} \n")
       }
     } catch {
+      case e: TransportException =>
+        logging.error(s"fail to update in $path", e)
+        message.append(e.toString)
+      case e: CheckoutConflictException =>
+        logging.error(s"fail to update in $path", e)
+        message.append("[CONFLICT]: \n")
+        message.append(e.getConflictingPaths.asScala.toList.mkString("","\n",""))
+      case e: GitAPIException =>
+        logging.error(s"fail to update in $path", e)
+        message.append(e.toString)
       case e: Exception =>
         logging.error(s"fail to update in $path", e)
+        message.append(e.toString)
     }
     message.toString
   }
 
-
-  def pushRepo(message: String, name: String, pw: String, path: String): String = {
+  def pushRepo(message: String, name: String, pw: String, path: String, branch:String,
+               remote: String, refSpec: String): String = {
     val res = new StringBuffer()
     try {
       val repo = new FileRepository(path)
+      require(branch.equals(repo.getBranch))
       val git: Git = new Git(repo)
-      val branch = repo.getBranch
       git.add.addFilepattern(".").call
       val commitRes: RevCommit = git.commit.setMessage(message).call
       res.append(s"[$branch ${commitRes.name().substring(0, 8)}] ")
       res.append(s"${commitRes.getShortMessage} \n")
       res.append(s"Committer: ${commitRes.getCommitterIdent.getName} \n")
-      val push = git.push.setRemote("origin")
+      val push = git.push
+        .setRemote(remote)
         .setForce(true)
         .setCredentialsProvider(new UsernamePasswordCredentialsProvider(name, pw))
-      if (branch.equals("master")) {
-        push.setRefSpecs(new RefSpec(s"master:refs/for/master"))
-      } else {
-        push.setRefSpecs(new RefSpec(branch))
-      }
+        .setRefSpecs(new RefSpec(refSpec))
+
       val pushResults = push.call()
       pushResults.asScala.foreach {
         push: PushResult => {
@@ -113,9 +139,17 @@ object GitUtil extends Logging {
       }
       res.toString
     } catch {
+      case e: IllegalArgumentException =>
+        s"fail to push, your branch has changed"
+      case e: InvalidRemoteException =>
+        "called with an invalid remote uri"
+      case e: TransportException =>
+        e.toString
+      case e: GitAPIException =>
+        e.toString
       case e: Exception =>
         logging.error(s"fail to push $path", e.printStackTrace())
-        s"fail to push $path"
+        s"fail to push"
     }
   }
 
@@ -132,6 +166,7 @@ object GitUtil extends Logging {
     } catch {
       case e: Exception =>
         logging.error(s"fail to show diff in $path", e)
+        e.toString
     }
     diff
   }
@@ -167,6 +202,7 @@ object GitUtil extends Logging {
     } catch {
       case e: Exception =>
         logging.error(s"fail to list status of $path", e)
+        e.toString
     }
     status
   }
@@ -179,7 +215,7 @@ object GitUtil extends Logging {
     } catch {
       case e: Exception =>
         logging.error(s"fail to list log of $path", e)
-        null
+        e.toString
     }
   }
 
@@ -218,53 +254,66 @@ object GitUtil extends Logging {
   }
 
 
-  def switchBranch(path: String, branch: String): Boolean = {
+  def switchBranch(path: String, branch: String): Option[Any] = {
     val commandLogger = GitCommandLogger()
-    var done = false
     try {
       val exitCode = Process(Seq("git", "checkout", branch), new File(path)).!(commandLogger.gitCommandLogger)
-      if (exitCode == 0) done = true
+      if (exitCode == 0) {
+        Some(true)
+      }else{
+        Some(commandLogger.errorResult.toList.mkString("","\n",""))
+      }
     } catch {
       case e: Exception =>
-        logging.error(s"fail to checkout $branch", e)
+        logging.error(s"fail to checkout $branch", e.toString)
+        Some(e.toString)
     }
-    done
   }
 
-  def createBranch(path: String, branch: String): Boolean = {
+  def createBranch(path: String, branch: String): Option[Any] = {
     val commandLogger = GitCommandLogger()
-    var done = false
     try {
       val isExists = Process(Seq("git", "branch", "--list", branch), new File(path))
         .!!(commandLogger.gitCommandLogger) //check exists
       if (isExists.isEmpty) {
         val exitCode = Process(Seq("git", "branch", branch), new File(path))
           .!(commandLogger.gitCommandLogger)
-        if (exitCode == 0) done = true
+        if (exitCode == 0){
+          Some(true)
+        }else{
+          Some(commandLogger.errorResult.toList.mkString("","\n",""))
+        }
+      }else{
+        Some(commandLogger.errorResult.toList.mkString("","\n",""))
       }
     } catch {
       case e: Exception =>
         logging.error(s"fail to create Branch $branch", e)
+        Some(e.toString)
     }
-    done
   }
 
-  def deleteBranch(path: String, branch: String): Boolean = {
+  def deleteBranch(path: String, branch: String): Option[Any] = {
     val commandLogger = GitCommandLogger()
-    var done = false
     try {
       val isExists = Process(Seq("git", "branch", "--list", branch), new File(path))
         .!!(commandLogger.gitCommandLogger) //check branch exists
       if (isExists.nonEmpty) {
         val exitCode = Process(Seq("git", "branch", "-D", branch), new File(path))
           .!(commandLogger.gitCommandLogger)
-        if (exitCode == 0) done = true
+        if (exitCode == 0){
+          Some(true)
+        }else{
+          Some(commandLogger.errorResult.toList.mkString("","\n",""))
+        }
+      }else{
+        Some(commandLogger.errorResult.toList.mkString("","\n",""))
       }
     } catch {
       case e: Exception =>
         logging.error(s"fail to delete Branch $branch", e)
+        Some(e.toString)
     }
-    done
   }
 
   def gitURL2Workspace(gitURL: String, localDir: String): String = {
@@ -283,5 +332,4 @@ object GitUtil extends Logging {
     val gitCommandLogger: ProcessLogger = ProcessLogger(line => outputResult.append(line),
       line => errorResult.append(line))
   }
-
 }
