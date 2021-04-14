@@ -9,8 +9,8 @@ package com.didichuxing.horoscope.service.storage
 import com.didichuxing.horoscope.core.FlowDslMessage.CompositorDef
 import com.didichuxing.horoscope.core.{Compositor, FileStore, Flow}
 import com.didichuxing.horoscope.dsl.FlowCompiler
-import com.didichuxing.horoscope.runtime.{Value, ValueDict}
 import com.didichuxing.horoscope.runtime.expression.{BuiltIn, SimpleBuiltIn}
+import com.didichuxing.horoscope.runtime.{Value, ValueDict}
 import com.didichuxing.horoscope.util.Logging
 import com.typesafe.config.Config
 
@@ -24,6 +24,7 @@ import scala.concurrent.Future
 import scala.util.Try
 
 class LocalFileStore(config: Config) extends FileStore with Logging {
+
   import LocalFileStore._
 
   val rootPath: String = Try(config.getString("horoscope.storage.file-store.local-root-path")).getOrElse("")
@@ -53,7 +54,7 @@ class LocalFileStore(config: Config) extends FileStore with Logging {
     try {
       Files.walk(Paths.get(pathname))
         .iterator()
-        .filter(p => validFile(p.toString, fileType,ignoreFiles))
+        .filter(p => validFile(p.toString, fileType, ignoreFiles))
         .foreach(p => list.append(p.toFile))
     } catch {
       case e: Exception =>
@@ -78,7 +79,7 @@ class LocalFileStore(config: Config) extends FileStore with Logging {
         Files.walk(p, 1)
           .skip(1) //skip itself
           .iterator()
-          .filter(p => if(Files.isDirectory(p)) !p.getFileName.toString.startsWith(".") else true)
+          .filter(p => if (Files.isDirectory(p)) !p.getFileName.toString.startsWith(".") else true)
           .filter(p => validFile(p.toString, fileType, ignoreFiles))
           .foreach {
             child =>
@@ -113,7 +114,7 @@ class LocalFileStore(config: Config) extends FileStore with Logging {
       writer = Files.newBufferedWriter(target, Charset.forName("UTF-8"))
       writer.write(content)
       isUpdated = true
-    }finally {
+    } finally {
       if (writer != null) writer.close()
     }
     isUpdated
@@ -242,17 +243,18 @@ class LocalFileStore(config: Config) extends FileStore with Logging {
 
   def validFile(path: String, validType: List[String], ignoreFiles: List[String] = Nil): Boolean = {
     val p = Paths.get(path)
-    if(ignoreFiles.contains(p.getFileName.toString)) {
+    if (ignoreFiles.contains(p.getFileName.toString)) {
       false
     }
     else {
-      if(Files.isDirectory(p)) true else validType.contains(path.split('.').lastOption.getOrElse(""))
+      if (Files.isDirectory(p)) true else validType.contains(path.split('.').lastOption.getOrElse(""))
     }
   }
 
 }
 
-object LocalFileStore{
+object LocalFileStore {
+
   case class Node(name: String, path: String, children: Seq[Node])
 
   def checkSyntax(text: String): Flow = {
@@ -261,6 +263,7 @@ object LocalFileStore{
         Future.failed(new NotImplementedError())
       }
     }
+
     // scalastyle:off
     implicit val builtin: BuiltIn = new SimpleBuiltIn(Map.empty, Map.empty)
 
