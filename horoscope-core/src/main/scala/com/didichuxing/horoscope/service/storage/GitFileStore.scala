@@ -16,6 +16,7 @@ import com.didichuxing.horoscope.util.GitUtil._
 import com.didichuxing.horoscope.util.Logging
 import com.typesafe.config.Config
 import spray.json._
+
 import java.io.File
 import java.nio.file._
 import scala.collection.JavaConversions.asScalaBuffer
@@ -151,9 +152,9 @@ class GitFileStore(config: Config) extends LocalFileStore(config) with Logging {
                   } else {
                     try {
                       updateFile(p, content)
-                    }catch {
-                      case e:Exception =>
-                        HttpResponse(400,e.toString)
+                    } catch {
+                      case e: Exception =>
+                        HttpResponse(400, entity = e.toString)
                     }
                   }
                 case _ => HttpResponse(400, entity = s"on incorrect branch ${branName}")
@@ -202,7 +203,7 @@ class GitFileStore(config: Config) extends LocalFileStore(config) with Logging {
   val importGitRoute: Route = entity(as[JsValue]) {
     json =>
       run {
-        json.asJsObject.getFields("git","userName","password") match {
+        json.asJsObject.getFields("git", "userName", "password") match {
           case Seq(JsString(git), JsString(userName), JsString(password)) =>
             val gitURL = if (git.equals(defaultGitURL)) { //git参数为default指默认centralRepo
               centralRepo
@@ -210,7 +211,7 @@ class GitFileStore(config: Config) extends LocalFileStore(config) with Logging {
               s"https://$git"
             }
             val dir = getPathname(gitURL)
-            val imported = importRepo(gitURL, dir ,userName, password).getOrElse(false)
+            val imported = importRepo(gitURL, dir, userName, password).getOrElse(false)
             imported match {
               case true =>
                 setUpstream(getPathname(gitURL), centralRepo).getOrElse(false) match {
@@ -219,7 +220,7 @@ class GitFileStore(config: Config) extends LocalFileStore(config) with Logging {
                 }
               case false =>
                 HttpResponse(400, entity = s"not a valid git URL")
-              case s:String =>
+              case s: String =>
                 HttpResponse(400, entity = s)
             }
           case _ => HttpResponse(406, entity = s"lack parameters") //incorrect param
@@ -231,11 +232,11 @@ class GitFileStore(config: Config) extends LocalFileStore(config) with Logging {
     entity(as[JsValue]) {
       json =>
         run {
-          json.asJsObject.getFields("git","userName","password") match {
+          json.asJsObject.getFields("git", "userName", "password") match {
             case Seq(JsString(git), JsString(userName), JsString(password)) =>
               val dir = getPathname(git)
               val remote = getRemote(git)
-              updateRepo(s"$dir/.git", centralBranch, remote,userName,password)
+              updateRepo(s"$dir/.git", centralBranch, remote, userName, password)
             case _ => HttpResponse(406, entity = s"lack parameters") //incorrect param
           }
         }
@@ -256,11 +257,11 @@ class GitFileStore(config: Config) extends LocalFileStore(config) with Logging {
                 remote = "upstream"
                 refSpec = s"$branchName:refs/for/master"
               case "origin" =>
-                if(branchName.equals("master")) {
+                if (branchName.equals("master")) {
                   refSpec = "master:refs/for/master"
                 }
             }
-            pushRepo(commitMessage, userName, password, dir.concat("/.git"), branchName,remote, refSpec)
+            pushRepo(commitMessage, userName, password, dir.concat("/.git"), branchName, remote, refSpec)
           case _ => HttpResponse(406, entity = s"lack parameters")
         }
       }
