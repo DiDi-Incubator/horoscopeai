@@ -54,7 +54,8 @@ class LocalFileStore(config: Config) extends FileStore with Logging {
     try {
       Files.walk(Paths.get(pathname))
         .iterator()
-        .filter(p => validFile(p.toString, fileType, ignoreFiles))
+        .filter(p => !Files.isDirectory(p))
+        .filter(p => validFile(p.toString, fileType, Nil))
         .foreach(p => list.append(p.toFile))
     } catch {
       case e: Exception =>
