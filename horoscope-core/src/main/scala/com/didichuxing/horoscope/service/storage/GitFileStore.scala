@@ -144,7 +144,7 @@ class GitFileStore(config: Config) extends LocalFileStore(config) with Logging {
               getPathnameOnBranch(gitURL, branName, path) match {
                 case Some(p) =>
                   if (content.isEmpty) {
-                    if (validFile(p, fileType)) {
+                    if (isDir || validFile(p, fileType)) {   //文件类型合法检查
                       createFile(p, isDir)
                     } else {
                       false
@@ -211,18 +211,19 @@ class GitFileStore(config: Config) extends LocalFileStore(config) with Logging {
               s"https://$git"
             }
             val dir = getPathname(gitURL)
-            val imported = importRepo(gitURL, dir, userName, password).getOrElse(false)
-            imported match {
-              case true =>
-                setUpstream(getPathname(gitURL), centralRepo).getOrElse(false) match {
-                  case true => true
-                  case s: String => HttpResponse(200, entity = s)
-                }
-              case false =>
-                HttpResponse(400, entity = s"not a valid git URL")
-              case s: String =>
-                super.deleteFile(dir)
-                HttpResponse(400, entity = s)
+            try {
+              val imported = importRepo(gitURL, dir, userName, password).getOrElse("")
+              imported match {
+                case true =>
+                  setUpstream(getPathname(gitURL), centralRepo)
+                  true
+                case s:String =>
+                  HttpResponse(400, entity = s)
+              }
+            } catch {
+              case e: Exception =>
+                deleteFile(dir)
+                HttpResponse(400, entity = s"clone failed, ${e.toString}")
             }
           case _ => HttpResponse(406, entity = s"lack parameters") //incorrect param
         }
