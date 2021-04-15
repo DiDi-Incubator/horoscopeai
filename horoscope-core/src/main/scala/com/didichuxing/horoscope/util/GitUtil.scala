@@ -35,12 +35,14 @@ object GitUtil extends Logging {
       case e: IllegalArgumentException =>
         logging.error("fail to import", e)
         Some("invalid gitURL")
-      case e: TransportException =>
+      case e: TransportException => //身份认证异常
+        logging.error(s"fail to import", e)
+        Some(e.toString)
+      case e: InvalidRemoteException => //远程链接异常
         logging.error(s"fail to import", e)
         Some(e.toString)
       case e: Exception =>
-        logging.error("fail to import", e)
-        Some(e.toString)
+        throw e
     }
   }
 
