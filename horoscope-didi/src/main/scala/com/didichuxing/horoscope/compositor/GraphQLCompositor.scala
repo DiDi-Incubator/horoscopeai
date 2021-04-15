@@ -154,8 +154,10 @@ class GraphQLCompositorFactory(
     val path = lines.take(1).mkString
     val flowConfig = CompositorUtil.parseConfigFromFlow(path)
     val remaining = lines.toList
+    val hasRemaining = remaining.nonEmpty
+    val hasHeader = hasRemaining && remaining.head.startsWith("header")
     // line 2: header config
-    val graphQLConfig = if (remaining.nonEmpty && remaining.head.startsWith("header")) {
+    val graphQLConfig = if (hasHeader) {
       ConfigFactory.parseString(
         s"{${remaining.head.replace("header", "").trim.split(";").mkString("\n")}}"
       )
@@ -165,9 +167,11 @@ class GraphQLCompositorFactory(
 
     val restfulConfig = new RestfulCompositorConfig(compositorConfig.withFallback(graphQLConfig), flowConfig)
     val queryName = Try(restfulConfig.getModelName).getOrElse("")
-    // remaining: query body
-    val queryBody = if (remaining.nonEmpty && remaining.tail.nonEmpty) {
+    // other lines: query body
+    val queryBody = if (hasHeader && remaining.tail.nonEmpty) {
       Some(remaining.tail.mkString("\n"))
+    } else if (hasRemaining && !hasHeader) {
+      Some(remaining.mkString("\n"))
     } else if (resource(queryName) != null) {
       Some(new String(resource(queryName)))
     } else {
