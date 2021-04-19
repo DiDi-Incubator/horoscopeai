@@ -166,7 +166,6 @@ class ZookeeperConfigStore(curator: CuratorFramework) extends ConfigStore with T
       path(Segment) { configType =>
         get {
           if (configType == LOG_TYPE || configType == SUBSCRIPTION_TYPE || configType == EXPERIMENT_TYPE) {
-            createFolderIfNotExist(configType)
             val contentList = getChildrenContent(configType)
             complete(HttpResponse(StatusCodes.OK, entity = contentList))
           } else {
