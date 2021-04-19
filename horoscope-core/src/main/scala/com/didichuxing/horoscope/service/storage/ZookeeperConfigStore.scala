@@ -142,6 +142,7 @@ class ZookeeperConfigStore(curator: CuratorFramework) extends ConfigStore with T
 
   // @throws(classOf[IllegalArgumentException])
   private def getConfListByType(configType: String): List[Config] = {
+    createFolderIfNotExist(configType)
     val result = ListBuffer[Config]()
     val fullPath = getFullPath(configType)
     val stat: Stat = curator.checkExists().forPath(fullPath)
@@ -183,6 +184,7 @@ class ZookeeperConfigStore(curator: CuratorFramework) extends ConfigStore with T
             complete(HttpResponse(StatusCodes.BadRequest, entity = ""))
           }
           if (configType == LOG_TYPE || configType == SUBSCRIPTION_TYPE || configType == EXPERIMENT_TYPE) {
+            createFolderIfNotExist(configType)
             val stat: Stat = curator.checkExists().forPath(getFullPath(configType, configName))
             if (stat == null) {
               complete(HttpResponse(StatusCodes.BadRequest, entity = ""))
@@ -227,7 +229,18 @@ class ZookeeperConfigStore(curator: CuratorFramework) extends ConfigStore with T
     })
   }
 
+  private def createFolderIfNotExist(configType: String): Unit = {
+    val fullPath = getFullPath(configType)
+    val stat: Stat = curator.checkExists().forPath(fullPath)
+    if (stat == null) {
+      curator.create().creatingParentsIfNeeded()
+        .withMode(CreateMode.PERSISTENT)
+        .forPath(fullPath)
+    }
+  }
+
   def getChildrenContent(configType: String): String = {
+    createFolderIfNotExist(configType)
     val path = getFullPath(configType)
     val list = curator.getChildren.forPath(path).asScala
     val typeName = configType match {

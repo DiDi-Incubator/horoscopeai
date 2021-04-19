@@ -10,6 +10,7 @@ import org.apache.curator.framework.{CuratorFramework, CuratorFrameworkFactory}
 import org.apache.curator.retry.RetryForever
 import org.apache.curator.test.TestingServer
 import org.apache.zookeeper.CreateMode
+import org.apache.zookeeper.data.Stat
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.{BeforeAndAfter, FunSuite, Matchers, stats}
 import spray.json.JsValue
@@ -65,6 +66,32 @@ class ZookeeperConfigStoreSuite extends FunSuite
   test("try to get by method - empty") {
     val store = newStore()
     an[IllegalArgumentException] should be thrownBy store.getLogConf("nothing")
+  }
+
+  test("get config list with no folder exist") {
+    val store = newStore()
+    var stat: Stat = curator.checkExists().forPath("/config/log")
+    (stat == null) shouldBe(true)
+
+    val s = store.getChildrenContent("log")
+    s shouldBe("""{"log-conf" : []}""")
+
+    stat = curator.checkExists().forPath("/config/log")
+    (stat == null) shouldBe(false)
+  }
+
+  test("get config list through api") {
+    val store = newStore()
+
+    Get("/configs/subscription") ~> store.api ~> check {
+      responseAs[String] shouldBe """[{"subscriptions" : []}]"""
+    }
+  }
+
+  test("get config list by type") {
+    val store = newStore()
+    val list: List[Config] = store.getLogConfList
+    list shouldBe a[List[Any]]
   }
 
   // tests of operating zk directly
