@@ -56,6 +56,7 @@ class ProcedureViewLoader(
         .withColumn("hour", lit(hour))
       output.printSchema()
       output.write.mode("overwrite").insertInto(targetTable)
+      sparkSession.sql(s"ALTER TABLE $targetTable PARTITION (year=$year, month=$month, day=$day, hour=$hour) CONCATENATE") // concatenate small files into large files
       println(s"Input lines ${inputCount}, transformed valid ${validCount}, " +
         s"output rows ${output.count()}, time taken ${System.currentTimeMillis() - startTime} ms")
     } else {
