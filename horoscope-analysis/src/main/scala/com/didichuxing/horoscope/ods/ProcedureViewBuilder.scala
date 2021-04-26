@@ -57,7 +57,7 @@ final class ProcedureViewBuilder {
   private def buildResult(): Map[String, String] = {
     val assign = proc.getAssignMap.asScala.mapValues(Value(_).toJson).toMap
     val composite = proc.getCompositeMap.asScala.mapValues(c => {
-      if (c == null) Value(None) else Value(c).toJson
+      if (c == null) Value(None).toJson else Value(c).toJson
     }).filter(x => x._2.toString.length > 2).toMap
     (assign ++ composite)
   }
