@@ -6,7 +6,7 @@ package com.didichuxing.horoscope.ods
 
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowInstance
 import com.didichuxing.horoscope.runtime.Value
-import com.didichuxing.horoscope.runtime.convert.ValueTypeAdapter
+import com.didichuxing.horoscope.runtime.convert.{ValueTypeAdapter, newFrom}
 import com.google.gson.{Gson, GsonBuilder}
 
 import scala.collection.JavaConverters._
@@ -56,7 +56,9 @@ final class ProcedureViewBuilder {
 
   private def buildResult(): Map[String, String] = {
     val assign = proc.getAssignMap.asScala.mapValues(Value(_).toJson).toMap
-    val composite = proc.getCompositeMap.asScala.mapValues(c => Value(c.getResult).toJson).toMap
+    val composite = proc.getCompositeMap.asScala.mapValues(c => {
+      if (c == null) Value(None) else Value(c).toJson
+    }).toMap.filter(x => x._2.toString.length > 2)
     (assign ++ composite)
   }
 
@@ -130,6 +132,12 @@ final class ProcedureViewBuilder {
 
   private def buildEndTime(): Long = if (proc.getEndTime > 0) proc.getEndTime else fi.getEndTime
 
+  private def buildExperiment(): String = proc.getExperiment.toString
+
+  private def buildContextChoice(): Array[String] = {
+    proc.getContextChoiceList.asScala.toArray
+  }
+
   private def buildDetail(): ProcedureView = {
     val id = buildId()
     ProcedureView(
@@ -146,7 +154,9 @@ final class ProcedureViewBuilder {
       fault = buildFault(),
       load = buildLoad(),
       ancestor = buildAncestor(),
-      descendants = buildDescendants(id)
+      descendants = buildDescendants(id),
+      experiment = buildExperiment(),
+      context_choice = buildContextChoice()
     )
   }
 
@@ -163,7 +173,9 @@ final class ProcedureViewBuilder {
       result = buildResult(),
       fault = buildFault(),
       ancestor = buildAncestor(),
-      descendants = buildDescendants(id)
+      descendants = buildDescendants(id),
+      experiment = buildExperiment(),
+      context_choice = buildContextChoice()
     )
   }
 
