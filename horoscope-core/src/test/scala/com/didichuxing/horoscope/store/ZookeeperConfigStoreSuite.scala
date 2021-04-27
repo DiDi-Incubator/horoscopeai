@@ -84,7 +84,7 @@ class ZookeeperConfigStoreSuite extends FunSuite
     val store = newStore()
 
     Get("/configs/subscription") ~> store.api ~> check {
-      responseAs[String] shouldBe """[{"subscriptions" : []}]"""
+      responseAs[String] shouldBe """{"subscriptions" : []}"""
     }
   }
 
