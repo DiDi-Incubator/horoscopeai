@@ -8,7 +8,6 @@ import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowInstance
 import com.didichuxing.horoscope.runtime.Value
 import com.didichuxing.horoscope.runtime.convert.ValueTypeAdapter
 import com.google.gson.{Gson, GsonBuilder, JsonObject}
-import spray.json.enrichAny
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
