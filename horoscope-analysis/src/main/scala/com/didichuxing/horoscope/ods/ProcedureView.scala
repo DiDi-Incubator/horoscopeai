@@ -44,6 +44,8 @@ case class Load(
  * @param load How, procedure trace context variables
  * @param ancestor How, parent procedure id
  * @param descendants How, children procedure id list, such as include and schedule flow
+ * @param experiment How, experiment name and group
+ * @param context_choice What, context choice list
  */
 case class ProcedureView(
   id: String = "",
@@ -59,5 +61,7 @@ case class ProcedureView(
   fault: Map[String, Fault] = Map.empty,
   load: Array[Load] = Array.empty,
   ancestor: String = "",
-  descendants: Array[String] = Array.empty
+  descendants: Array[String] = Array.empty,
+  experiment: String = "",
+  context_choice: Array[String] = Array.empty
 )

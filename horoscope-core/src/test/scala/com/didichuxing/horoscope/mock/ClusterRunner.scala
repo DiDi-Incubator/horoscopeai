@@ -24,7 +24,7 @@ class ClusterRunner extends Logging {
     val zkClient = new ZkClient(config)
     val traceStore = new RedisTraceStore
 
-    val configStore = new ZookeeperConfigStore(zkClient.configCurator())
+    val configStore = new ZookeeperConfigStore(zkClient.configCurator(), zkClient.getConfigPath())
     val fileStore = new GitFileStore(config)
 
     val flowStore = GitFlowStore.newBuilder()

@@ -7,7 +7,8 @@ package com.didichuxing.horoscope.ods
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowInstance
 import com.didichuxing.horoscope.runtime.Value
 import com.didichuxing.horoscope.runtime.convert.ValueTypeAdapter
-import com.google.gson.{Gson, GsonBuilder}
+import com.google.gson.{Gson, GsonBuilder, JsonObject}
+import spray.json.enrichAny
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
@@ -132,6 +133,18 @@ final class ProcedureViewBuilder {
 
   private def buildEndTime(): Long = if (proc.getEndTime > 0) proc.getEndTime else fi.getEndTime
 
+  private def buildExperiment(): String = {
+    if (proc.hasExperiment) {
+      val e = proc.getExperiment
+      val json = new JsonObject()
+      json.addProperty("name", e.getName)
+      json.addProperty("group", e.getGroup)
+      json.toString
+    } else {
+      "{}"
+    }
+  }
+
   private def buildDetail(): ProcedureView = {
     val id = buildId()
     ProcedureView(
@@ -148,7 +161,9 @@ final class ProcedureViewBuilder {
       fault = buildFault(),
       load = buildLoad(),
       ancestor = buildAncestor(),
-      descendants = buildDescendants(id)
+      descendants = buildDescendants(id),
+      experiment = buildExperiment(),
+      context_choice = proc.getContextChoiceList.asScala.toArray
     )
   }
 
@@ -165,7 +180,9 @@ final class ProcedureViewBuilder {
       result = buildResult(),
       fault = buildFault(),
       ancestor = buildAncestor(),
-      descendants = buildDescendants(id)
+      descendants = buildDescendants(id),
+      experiment = buildExperiment(),
+      context_choice = proc.getContextChoiceList.asScala.toArray
     )
   }
 
