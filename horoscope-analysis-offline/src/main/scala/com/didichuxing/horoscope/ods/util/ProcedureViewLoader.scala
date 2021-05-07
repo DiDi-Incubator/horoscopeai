@@ -48,7 +48,8 @@ class ProcedureViewLoader(
       val output = sparkSession.createDataset(transformed)
         .select("trace_id", "id",
           "flow_name", "start_time", "end_time", "choice", "argument",
-          "result", "composite", "fault", "flow_id", "load", "ancestor", "descendants")
+          "result", "composite", "fault", "flow_id", "load", "ancestor",
+          "descendants", "experiment", "context_choice")
         .withColumn("year", lit(year))
         .withColumn("month", lit(month))
         .withColumn("day", lit(day))
