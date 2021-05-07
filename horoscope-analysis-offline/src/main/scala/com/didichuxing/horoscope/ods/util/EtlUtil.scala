@@ -4,9 +4,9 @@ import java.util.Base64
 
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowInstance
 import com.didichuxing.horoscope.ods.ProcedureView
-import com.didichuxing.horoscope.runtime.Value
+import com.didichuxing.horoscope.runtime.{NULL, Value, ValueDict}
 import com.didichuxing.horoscope.util.Logging
-import com.google.gson.JsonParser
+import com.google.gson.{JsonObject, JsonParser}
 import org.apache.spark.sql.SparkSession
 
 object EtlUtil extends Logging {
@@ -21,7 +21,14 @@ object EtlUtil extends Logging {
   }
 
   def decodeAsProcedureView(s: String): ProcedureView = {
-    Value(new JsonParser().parse(s)).as[ProcedureView]
+    var v = Value(new JsonParser().parse(s)).as[ValueDict]
+    if (v.visit("experiment") == NULL) {
+      v = v.updated("experiment", Value(new JsonObject().toString))
+    }
+    if (v.visit("context_choice") == NULL) {
+      v = v.updated("context_choice", Value(new JsonParser().parse("[]")))
+    }
+    v.as[ProcedureView]
   }
 
   def createSparkSession(name: String): SparkSession = {

@@ -144,6 +144,14 @@ final class ProcedureViewBuilder {
     }
   }
 
+  private def buildContextChoice(): Array[String] = {
+    if (proc.getContextChoiceList != null) {
+      proc.getContextChoiceList.asScala.toArray
+    } else {
+      Array.empty
+    }
+  }
+
   private def buildDetail(): ProcedureView = {
     val id = buildId()
     ProcedureView(
@@ -162,7 +170,7 @@ final class ProcedureViewBuilder {
       ancestor = buildAncestor(),
       descendants = buildDescendants(id),
       experiment = buildExperiment(),
-      context_choice = proc.getContextChoiceList.asScala.toArray
+      context_choice = buildContextChoice()
     )
   }
 
@@ -181,7 +189,7 @@ final class ProcedureViewBuilder {
       ancestor = buildAncestor(),
       descendants = buildDescendants(id),
       experiment = buildExperiment(),
-      context_choice = proc.getContextChoiceList.asScala.toArray
+      context_choice = buildContextChoice()
     )
   }
 
