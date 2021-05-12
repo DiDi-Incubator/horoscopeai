@@ -31,7 +31,7 @@ class ZookeeperConfigStore(curator: CuratorFramework,
   private val isInitialized: Semaphore = new Semaphore(0)
 
   private val tree: TreeCache = {
-    val cache = TreeCache.newBuilder(curator, s"/$configPath")
+    val cache = TreeCache.newBuilder(curator, configPath)
       .setCreateParentNodes(true)
       .setExecutor(executor)
       .build()
@@ -101,10 +101,10 @@ class ZookeeperConfigStore(curator: CuratorFramework,
   }
 
   private def getFullPath(configType: String, configName: String): String = {
-    s"/$configPath/$configType/$configName"
+    s"$configPath/$configType/$configName"
   }
 
-  private def getFullPath(path: String): String = s"/$configPath/$path"
+  private def getFullPath(path: String): String = s"$configPath/$path"
 
   /** update operation to ZK */
   private def update(path: String, text: String): Unit = {
