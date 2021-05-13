@@ -17,8 +17,7 @@ import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.concurrent.ExecutionContext
 import scala.util.parsing.json.JSON._
 
-class ZookeeperConfigStore(curator: CuratorFramework,
-                           configPath: String) extends ConfigStore with TreeCacheListener with Logging {
+class ZookeeperConfigStore(curator: CuratorFramework) extends ConfigStore with TreeCacheListener with Logging {
 
   import akka.http.scaladsl.server.Directives._
 
@@ -31,7 +30,7 @@ class ZookeeperConfigStore(curator: CuratorFramework,
   private val isInitialized: Semaphore = new Semaphore(0)
 
   private val tree: TreeCache = {
-    val cache = TreeCache.newBuilder(curator, configPath)
+    val cache = TreeCache.newBuilder(curator, "/")
       .setCreateParentNodes(true)
       .setExecutor(executor)
       .build()
@@ -89,7 +88,7 @@ class ZookeeperConfigStore(curator: CuratorFramework,
   }
 
   override def register(listener: ConfigChangeListener): Unit = {
-    configChangeListeners.append(listener)
+    configChangeListeners += listener
   }
 
   override def api: Route = {
@@ -100,11 +99,9 @@ class ZookeeperConfigStore(curator: CuratorFramework,
     )
   }
 
-  private def getFullPath(configType: String, configName: String): String = {
-    s"$configPath/$configType/$configName"
-  }
+  private def getFullPath(configType: String, configName: String): String = s"/$configType/$configName"
 
-  private def getFullPath(path: String): String = s"$configPath/$path"
+  private def getFullPath(path: String): String = s"/$path"
 
   /** update operation to ZK */
   private def update(path: String, text: String): Unit = {
@@ -133,21 +130,6 @@ class ZookeeperConfigStore(curator: CuratorFramework,
     } else {
       null
     }
-  }
-
-  private def copyToAnotherCluster(targetCluster: String, configType: String, configName: String): Boolean = {
-    val configContent = new String(curator.getData.forPath(getFullPath(configType, configName)))
-    val fullPath = s"/$targetCluster/config/$configType/$configName"
-    val stat: Stat = curator.checkExists().forPath(fullPath)
-    if (stat == null) {
-      curator.create().creatingParentsIfNeeded()
-        .withMode(CreateMode.PERSISTENT)
-        .forPath(fullPath, configContent.getBytes("UTF-8"))
-    } else {
-      curator.setData()
-        .forPath(fullPath, configContent.getBytes("UTF-8"))
-    }
-    true
   }
 
   @throws(classOf[IllegalArgumentException])
@@ -238,25 +220,6 @@ class ZookeeperConfigStore(curator: CuratorFramework,
             }
           } else {
             complete(HttpResponse(StatusCodes.BadRequest, entity = ""))
-          }
-        },
-        post {
-          entity(as[String]) { targetCluster =>
-            if (configTypeValid(configType)) { //TODO(lgy) targetCluster validation
-              val stat: Stat = curator.checkExists().forPath(getFullPath(configType, configName))
-                if (stat != null) {
-                  val result = copyToAnotherCluster(targetCluster, configType, configName)
-                  if (result) {
-                    complete(HttpResponse(status = StatusCodes.OK, entity = "successfully copied"))
-                  } else {
-                    complete(HttpResponse(StatusCodes.BadRequest, entity = "copy failed"))
-                  }
-                } else {
-                  complete(HttpResponse(StatusCodes.BadRequest, entity = "file not exist"))
-                }
-            } else {
-              complete(HttpResponse(StatusCodes.BadRequest, entity = "cluster or config type not valid"))
-            }
           }
         }
       )

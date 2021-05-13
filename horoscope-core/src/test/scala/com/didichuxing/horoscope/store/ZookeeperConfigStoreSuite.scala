@@ -1,18 +1,25 @@
 package com.didichuxing.horoscope.store
 
+import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.testkit.ScalatestRouteTest
-import com.didichuxing.horoscope.service.storage.ZookeeperConfigStore
+import com.didichuxing.horoscope.core.ConfigChangeListener
+import com.didichuxing.horoscope.service.storage.{ZookeeperConfigStore, ZookeeperFlowStore}
 import com.typesafe.config.Config
+import org.apache.curator.framework.recipes.cache.TreeCache
 import org.apache.curator.framework.{CuratorFramework, CuratorFrameworkFactory}
 import org.apache.curator.retry.RetryForever
 import org.apache.curator.test.TestingServer
 import org.apache.zookeeper.CreateMode
 import org.apache.zookeeper.data.Stat
 import org.scalamock.scalatest.MockFactory
-import org.scalatest.{BeforeAndAfter, FunSuite, Matchers}
+import org.scalatest.{BeforeAndAfter, FunSuite, Matchers, stats}
+import spray.json.JsValue
 
+import java.util.UUID
+import java.util.concurrent.Executors
 import scala.collection.JavaConverters.asScalaBufferConverter
 import scala.collection.mutable
+import scala.collection.mutable.ListBuffer
 
 class ZookeeperConfigStoreSuite extends FunSuite
   with Matchers
@@ -27,7 +34,7 @@ class ZookeeperConfigStoreSuite extends FunSuite
     .build()
 
   def newStore(): ZookeeperConfigStore = {
-    new ZookeeperConfigStore(curator.usingNamespace("config"), "/hnb_test/config")
+    new ZookeeperConfigStore(curator.usingNamespace("config"))
   }
 
 
@@ -63,14 +70,14 @@ class ZookeeperConfigStoreSuite extends FunSuite
 
   test("get config list with no folder exist") {
     val store = newStore()
-    if(curator.checkExists().forPath("/config/log") != null) {
-      curator.delete().forPath("/config/log")
-    }
-    val stat: Stat = curator.checkExists().forPath("/config/log")
+    var stat: Stat = curator.checkExists().forPath("/config/log")
     (stat == null) shouldBe(true)
 
     val s = store.getChildrenContent("log")
     s shouldBe("""{"log-conf" : []}""")
+
+    stat = curator.checkExists().forPath("/config/log")
+    (stat == null) shouldBe(false)
   }
 
   test("get config list through api") {
@@ -102,8 +109,55 @@ class ZookeeperConfigStoreSuite extends FunSuite
     // wait for put
     Thread.sleep(1000)
 
+
     val configTypePath = "/config/log"
     val list = curator.getChildren().forPath(configTypePath).asScala
     list shouldBe a[mutable.Buffer[String]]
   }
+
+  test("getLogConf return Config") {
+    putByCurator()
+    // wait for put
+    Thread.sleep(1000)
+
+    val store = newStore()
+    val config = store.getLogConf("test")
+    config shouldBe a[Config]
+  }
+
+  test("getLofConfList return List[Config]") {
+    putByCurator()
+    // wait for put
+    Thread.sleep(1000)
+
+    val store = newStore()
+    val list = store.getLogConfList
+    list shouldBe a[List[Config]]
+  }
+
+  test("Config Listeners") {
+    trait Output {
+      def print(s: String):Unit = Console.println(s)
+    }
+
+    trait MockOutput extends Output {
+      var messages: Seq[String] = Seq()
+      override def print(s: String):Unit = messages = messages :+ s
+    }
+
+    class ListenerTest extends ConfigChangeListener with Output {
+      override def onConfUpdate():Unit = print("config has changed === I will update my config")
+    }
+    val listener = new ListenerTest with MockOutput
+
+    val store = newStore()
+
+    store.register(listener)
+    putByCurator()
+    Thread.sleep(1000)
+    listener.messages should contain("config has changed === I will update my config")
+  }
 }
+
+
+
