@@ -227,17 +227,17 @@ class ChoreographySuite extends ExecutorSuiteHelper {
     env.updateContext("a", "1", "$delta", Value(0))
     val event = newEvent("1", "a")("v2/log", "input" -> Value(-1))
     whenReady(executor.execute(event)) { instance =>
+      println(instance.toJson)
       instance("""procedure[1].flow_name""").as[String] shouldBe "/v2/log-include"
       instance("""procedure[1].context_choice""").as[Seq[String]] shouldBe (Seq("/v2/log:negative"))
       instance("""procedure[1].assign.input""").as[Int] shouldBe -1
-      instance("""procedure[1].assign.delta """).as[Int] shouldBe 1
+      instance("""procedure[1].assign.tag """).as[String] shouldBe "negative"
       instance("""procedure[1].assign.output """).as[String] shouldBe "negative"
 
       instance("""procedure[0].flow_name """).as[String] shouldBe "/v2/log"
       instance("""schedule[0].parent.variable[?(_.reference.name == "output")][-][0].value""").as[String] shouldBe "negative"
       instance("""schedule[0].parent.choice""").as[Map[String, Map[String, Seq[String]]]] shouldBe
         Map("/v2/log" -> Map("choice" -> Seq("negative")))
-
     }
   }
 

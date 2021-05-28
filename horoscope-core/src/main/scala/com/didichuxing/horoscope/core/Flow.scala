@@ -38,7 +38,7 @@ class Flow(val flowDef: FlowDef, val flowConf: FlowConf)(
 
   def chart: FlowChart = new FlowChart(this)
 
-  var logVariables: Seq[LogVariable] = _
+  var logFields: Seq[LogVariable] = _
 
   val logChoices: Seq[String] = flowConf.parsedLogConf.filter(_.flow == flowDef.getName).flatMap(_.choices).distinct
 
@@ -80,7 +80,7 @@ object Flow {
         }
       }
 
-      flow.logVariables = {
+      flow.logFields = {
         val flowName = flowDef.getName
         val current = flowConf.parsedLogConf.filter(_.flow == flowName).flatMap({ conf =>
           conf.assigns.map { assign =>

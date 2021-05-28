@@ -19,8 +19,8 @@
         => {}
     }
 
-    result <- output
-    <include> => /v2/log-include?input=@input & tag=output
+    result <- 1
+    <include> => /v2/log-include?input=@input & tag="negative"
     export <- include->tag
     <schedule> + => /v2/log-schedule?input=@input
 

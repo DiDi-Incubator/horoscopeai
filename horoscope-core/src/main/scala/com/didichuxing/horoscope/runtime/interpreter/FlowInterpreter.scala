@@ -128,7 +128,6 @@ class FlowInterpreter(
       }
     }
 
-    // collect log variables and choices
     private def collect(procedure: FlowContext): Unit = {
       procedure.collect()
       for (child <- procedure.children) {
@@ -250,34 +249,22 @@ class FlowInterpreter(
 
     val choices: ListBuffer[String] = ListBuffer.empty
 
-    lazy val variableContexts: Map[String, Context] = {
-      nodes.flatMap {
-        case l: LoadContext => Some(l.load.name, l)
-        case u: UpdateContext => Some((u.update.name, u))
-        case e: EvaluateContext => Some((e.name, e))
-        case p: PlaceholderContext => Some((p.name, p))
-        case c: CompositeContext => Some((c.name, c))
-        case bc: BatchCompositeContext => Some((bc.name, bc))
-        case _ => None
-      }
-    }.toMap
+    lazy val logReferences: Set[String] = {
+      flow.logFields.view.filter(_.from == flow.name).flatMap(_.expression.references.map(_.identifier)).toSet
+    }
 
     def collect(): Unit = {
-      flow.logVariables.filter(_.from == flow.name).foreach { l =>
-        l.expression.references.foreach { ref =>
-          val context = variableContexts.get(ref.identifier)
-          if (context.isDefined && context.get.isReady) {
-            val value = context.get.value
-            Log.addVariable(Log.VariableKey(ref.identifier, l.from), procedure.scopes, value)
-          }
-        }
+      for ((name, argument) <- flow.arguments if argument.isReady) {
+        val argName = if (name.startsWith("@")) name else "@" + name
+        if (logReferences.contains(argName))
+          Log.addVariable(Log.VariableKey(argName, flow.name), scopes, argument.value)
       }
 
       Log.addChoice(flow.name, procedure.scopes, procedure.choices)
     }
 
     def doLog(): Unit = {
-      flow.logVariables.filter(_.to == procedure.flow.name).foreach { f =>
+      flow.logFields.filter(_.to == flow.name).foreach { f =>
         val context = Log.variables.filter(_._1.flow == f.from).map(r => r._1.name -> r._2)
         val value = Try(Some(f.expression.apply(Value(context)))).getOrElse(None)
         if (value.isDefined) log.putAssign(f.name, value.get.as[FlowValue])
@@ -360,7 +347,7 @@ class FlowInterpreter(
 
   }
 
-  trait ExperimentContext {
+  trait ExperimentContext extends Context {
 
     def flow: String
 
@@ -368,11 +355,22 @@ class FlowInterpreter(
 
     lazy val expressions: Map[String, Expression] = getController(flow).map(_.dependency).getOrElse(Map())
 
+    lazy val exptContexts: Map[String, Context] = {
+      procedure.nodes.flatMap {
+        case l: LoadContext => Some((l.load.name, l))
+        case u: UpdateContext => Some((u.update.name, u))
+        case p: PlaceholderContext => Some((p.name, p))
+        case c: CompositeContext => Some((c.name, c))
+        case bc: BatchCompositeContext => Some((bc.name, bc))
+        case _ => None
+      }.toMap ++ procedure.flow.variables.mapValues(nodeToContext)
+    }
+
     lazy val exptDependencies: Map[String, Context] = {
       (expressions - "@event_id").values.flatMap({ expression =>
         expression.references.flatMap({ ref =>
-          if (procedure.variableContexts.contains(ref.identifier)) {
-            Some((ref.identifier, procedure.variableContexts(ref.identifier)))
+          if (exptContexts.contains(ref.identifier)) {
+            Some((ref.identifier, exptContexts(ref.identifier)))
           } else {
             logging.error(s"expression reference variable: ${ref.identifier} doesn't exist" +
               s" in context of flow: ${flow} ")
@@ -393,10 +391,10 @@ class FlowInterpreter(
 
     lazy val target: FlowContext = {
       val childContext = FlowContext(
-          include.flow,
-          procedure.scopes :+ include.scope,
-          include.args.map({ case (name, node) => ("@" + name) -> nodeToContext(node) }),
-          Value(exptVariables)
+        include.flow,
+        procedure.scopes :+ include.scope,
+        include.args.map({ case (name, node) => ("@" + name) -> nodeToContext(node) }),
+        Value(exptVariables)
       )
       procedure.children += childContext
 
@@ -710,9 +708,25 @@ class FlowInterpreter(
     }
   }
 
+  trait LogContext extends Context {
+    def procedure: FlowContext
+    def flow: String = procedure.flow.name
+    def name: String
+
+    def logAssign(node: Variable, value: Value): Unit = {
+      if (isLogRedirected && procedure.logReferences.contains(name)) {
+        Log.addVariable(Log.VariableKey(name, flow), procedure.scopes, value)
+      }
+
+      if (isFlowLogDetailed && !name.startsWith("-") && !node.isTransient) {
+        procedure.log.putAssign(name, value.as[FlowValue])
+      }
+    }
+  }
+
   class EvaluateContext(val evaluate: Evaluate)(
     implicit override val procedure: FlowContext
-  ) extends Context with FaultRecorder {
+  ) extends Context with FaultRecorder with LogContext {
     override def name: String = evaluate.name
 
     override protected def execute(): Dependencies = {
@@ -731,15 +745,13 @@ class FlowInterpreter(
 
     override protected def onComplete: Handle = super.onComplete orElse {
       case Success(value) =>
-        if (isFlowLogDetailed && !name.startsWith("-") && !evaluate.isTransient) {
-          procedure.log.putAssign(name, value.as[FlowValue])
-        }
+        logAssign(evaluate, value)
     }
   }
 
   class CompositeContext(val composite: Composite)(
     implicit override val procedure: FlowContext
-  ) extends Context with FaultRecorder {
+  ) extends Context with FaultRecorder with LogContext {
     override def name: String = composite.name
 
     val log: Procedure.Composite.Builder = Procedure.Composite.newBuilder()
@@ -771,13 +783,13 @@ class FlowInterpreter(
     override protected def onComplete: Handle = super.onComplete orElse {
       case Success(value) =>
         procedure.log.putComposite(name, log.build())
-        if (isFlowLogDetailed && !composite.isTransient) procedure.log.putAssign(name, value.as[FlowValue])
+        logAssign(composite, value)
     }
   }
 
   class BatchCompositeContext(val composite: Composite)(
     implicit override val procedure: FlowContext
-  ) extends Context with FaultRecorder {
+  ) extends Context with FaultRecorder with LogContext {
     override def name: String = composite.name
 
     val log: Procedure.Composite.Builder = Procedure.Composite.newBuilder()
@@ -821,7 +833,7 @@ class FlowInterpreter(
     override protected def onComplete: Handle = super.onComplete orElse {
       case Success(value) =>
         procedure.log.putComposite(name, log.build())
-        if (isFlowLogDetailed && !composite.isTransient) procedure.log.putAssign(name, value.as[FlowValue])
+        logAssign(composite, value)
     }
   }
 
