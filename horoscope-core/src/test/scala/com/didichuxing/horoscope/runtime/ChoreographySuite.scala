@@ -1,23 +1,24 @@
 package com.didichuxing.horoscope.runtime
 
 import java.nio.file.Paths
+import java.util.concurrent.Callable
 
 import akka.actor.ActorSystem
-import com.didichuxing.horoscope.core.Flow.FlowConf
+import com.didichuxing.horoscope.core.FlowConf
 import com.didichuxing.horoscope.core.FlowDslMessage.CompositorDef
-import com.didichuxing.horoscope.core.{Compositor, Flow}
 import com.didichuxing.horoscope.core.FlowRuntimeMessage._
+import com.didichuxing.horoscope.core.{Compositor, Flow}
 import com.didichuxing.horoscope.dsl.FlowCompiler
 import com.didichuxing.horoscope.runtime.Implicits.builtin
 import com.didichuxing.horoscope.runtime.experiment.{ABTestController, ExperimentController}
-import com.didichuxing.horoscope.util.{FileUtils, FlowGraphBuilder}
+import com.didichuxing.horoscope.runtime.expression.{BuiltIn, DefaultBuiltIn, Expression}
+import com.didichuxing.horoscope.util.{FileUtils, FlowGraph, Utils}
 import com.google.common.io.Resources
 import com.typesafe.config.{Config, ConfigFactory}
 import org.antlr.v4.runtime.CharStreams
-import com.didichuxing.horoscope.util.FlowConfParser._
 
-import scala.collection.JavaConverters._
 import scala.collection.JavaConversions._
+import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.concurrent.Future
 
@@ -28,32 +29,33 @@ class ChoreographySuite extends ExecutorSuiteHelper {
     private val compositors: mutable.Map[(String, String), Compositor] = mutable.Map()
     private val contexts: mutable.Map[String, Map[String, TraceVariable]] = mutable.Map()
     private val flowConfigs = loadConf()
-    private val controllers: Map[String, ExperimentController] = loadFlowControllers()
+    private val controllers: Map[String, Seq[ExperimentController]] = loadFlowControllers()
     private val flows: Map[String, Flow] = loadFlows()
 
     private def getFlowConf(flow: String): FlowConf = {
-      val flowLogConf = flowConfigs._1.filter({ conf =>
-        val parsed = conf.parseLogConf()
-        parsed.flow == flow || parsed.assigns.toSet.exists(_.flow == flow) || parsed.choices.contains(flow)
-      })
-
       val subscribeConf = flowConfigs._2.filter(_.getString("publisher") == flow)
       val exprConf = flowConfigs._3.filter(_.getString("flow") == flow)
+      val topicConf = flowConfigs._4
+      val callbackConf = flowConfigs._5.filter(_.getString("flow.register") == flow)
 
-      FlowConf(flowLogConf, subscribeConf, exprConf)
+      FlowConf(topicConf, subscribeConf, exprConf, callbackConf)
     }
 
-    private def loadConf(): (Seq[Config], Seq[Config], Seq[Config]) = {
+    override def getBuiltIn(): BuiltIn = DefaultBuiltIn.defaultBuiltin
+
+    private def loadConf(): (Seq[Config], Seq[Config], Seq[Config], Seq[Config], Seq[Config]) = {
       val logConf = ConfigFactory.load("flow-conf/log.conf").getConfigList("logs").asScala
       val experimentConf = ConfigFactory.load("flow-conf/experiment.conf")
         .getConfigList("experiments").asScala
       val subscribeConf = ConfigFactory.load("flow-conf/subscribe.conf")
         .getConfigList("subscriptions")
 
-      (logConf, subscribeConf, experimentConf)
+      val topicConf = ConfigFactory.load("flow-conf/topic.conf").getConfigList("topics")
+      val callbackConf = ConfigFactory.load("flow-conf/callback.conf").getConfigList("callbacks")
+      (logConf, subscribeConf, experimentConf, topicConf, callbackConf)
     }
 
-    private def loadFlowControllers(): Map[String, ExperimentController] = {
+    private def loadFlowControllers(): Map[String, Seq[ExperimentController]] = {
       val result = flowConfigs._3.map({ conf =>
         val flow = conf.getString("flow")
         val catalog = conf.getString("catalog")
@@ -62,13 +64,13 @@ class ChoreographySuite extends ExecutorSuiteHelper {
           case _ => null
         }
         flow -> controller
-      }).toMap
+      }).groupBy(_._1).mapValues(r => r.map(_._2))
 
       result
     }
 
     def loadFlows(): Map[String, Flow] = {
-      val uri = Resources.getResource("infoflow").toURI
+      val uri = Resources.getResource("infoflow/v2/").toURI
       val basePath = Paths.get(uri).normalize()
       val flowFiles = FileUtils.walkFileTree(basePath, Set(".flow"))
 
@@ -105,11 +107,11 @@ class ChoreographySuite extends ExecutorSuiteHelper {
       compositor(definition.getFactory, definition.getContent)
     }
 
-    override def getController(flow: String): Option[ExperimentController] = controllers.get(flow)
+    override def getController(flow: String): Seq[ExperimentController] = controllers.getOrElse(flow, Nil)
 
-    override def getFlowByName(name: String): Flow = {
-      flows(name)
-    }
+    override def getFlowByName(name: String): Flow = flows(name)
+
+    override def getFlowGraph(): FlowGraph = FlowGraph.newBuilder(flows.values.toSeq).build()
 
     def getTraceContext(traceId: String, keys: Array[String]): Future[Map[String, TraceVariableOrBuilder]] = {
       Future.successful(contexts.getOrElse(traceId, Map.empty))
@@ -122,7 +124,7 @@ class ChoreographySuite extends ExecutorSuiteHelper {
     env = new MockEnv()
     executor = new FlowExecutorImpl(ConfigFactory.parseString(
       """
-        |horoscope.flow-executor.log.redirected = true
+        |horoscope.flow-executor.topic-log.enabled = true
         |""".stripMargin
     ), ActorSystem("flow-test"), env)
 
@@ -133,6 +135,24 @@ class ChoreographySuite extends ExecutorSuiteHelper {
     executor.stop()
     env = null
     executor = null
+  }
+
+  def run(event: FlowEvent)(f: FlowInstance => Unit): Unit = {
+    try {
+      whenReady(executor.execute(event)) { instance =>
+        f(instance)
+      }
+    } catch {
+      case t: Throwable =>
+        println("run error" ,t.getMessage)
+    }
+  }
+
+  def getLocalTrace(): Map[String, TraceVariable] = {
+    val traceContext = executor.contextCache.get("a", new Callable[Map[String, TraceVariable]] {
+      def call(): Map[String, TraceVariable] = Map.empty
+    })
+    traceContext
   }
 
   test("subscribe") {
@@ -160,88 +180,199 @@ class ChoreographySuite extends ExecutorSuiteHelper {
     }
   }
 
-  test("flow experiment") {
-    def run(level: Int, eventId: String, flow: String)(f: FlowInstance => Unit): Unit = {
-      val event = newEvent(eventId, "a")(flow, "level" -> Value(level), "tag" -> Value("unknown"))
-      whenReady(executor.execute(event)) { instance => f(instance) }
+  /**
+   * /v2/topic/log --(include)-> /v2/topic/log-include
+   *        |
+   *        |
+   *         --(schedule)--> /v2/topic/log-schedule --(include)-> /v2/topic/recursion <-----
+   *                                                     \                           \       \
+   *                                               /v2/topic/hello                    (include)
+   */
+  test("flow topic") {
+    // test forward context
+    // env.updateContext("a", "1", "$delta", Value(0))
+    val event = newEvent("1", "a")("v2/topic/log", "input" -> Value(-1))
+    var schedule: FlowEvent = null
+
+    run(event) { instance =>
+      schedule = instance.getSchedule(0)
+      // topic1 in forward state
+      instance("""schedule[0].forward.topic_name """).as[String] shouldBe "topic1"
+      instance("""schedule[0].forward.variable.v_input""").as[Int] shouldBe -1
+      instance("""schedule[0].forward.tag.length()""").as[Int] should be > 0
+
+      // topic2 in backward state
+      instance(""" backward[0].topic_name """).as[String] shouldBe "topic2"
+      instance("""backward[0].dependency_flow  """).as[Seq[String]] should contain theSameElementsAs(
+        Seq("/v2/topic/hello", "/v2/topic/recursion", "/v2/topic/base"))
+      instance("""schedule[0].trigger[0].topic_name """).as[String] shouldBe "topic2"
+      instance("""backward[0].tag.length()""").as[Int] should be > 0
+
     }
 
-    // experiment condition is not satisfied, bucket=26, fallback to default
-    run(level = 1, eventId = "1", flow = "v2/base") { instance =>
-      instance("""procedure[0].flow_name""").as[String] shouldBe "/v2/base"
-      instance("""procedure[0].experiment.name""").as[String] shouldBe "base-experiment"
-      instance("""procedure[0].experiment.group""").as[String] shouldBe "default_group"
-      instance("""procedure[0].argument.tag""").as[String] shouldBe "unknown"
-    }
+    run(schedule) { instance =>
+      // topic1 is finished
+      instance("""topic[?(_.topic_name == "topic1")][-][0].field.length() """).as[Int] shouldBe 8
+      instance("""topic[?(_.topic_name == "topic1")][-][0].field.c_include """).as[Seq[String]] should contain theSameElementsAs
+        Seq("flag")
 
-    // experiment condition is satisfied, bucket=26, choose control group
-    run(level = 3, eventId = "1", flow = "v2/base") { instance =>
-      instance("""procedure[0].flow_name""").as[String] shouldBe "/v2/base"
-      instance("""procedure[0].experiment.name""").as[String] shouldBe "base-experiment"
-      instance("""procedure[0].experiment.group""").as[String] shouldBe "control-group"
-      instance("""procedure[0].argument.tag""").as[String] shouldBe "control"
-    }
+      // topic2 is finished
+      instance("""topic[?(_.topic_name == "topic2")][-][0].field.length() """).as[Int] shouldBe 10
+      instance("""topic[?(_.topic_name == "topic2")][-][0].field.c_include """).as[Seq[String]] should contain theSameElementsAs
+        Seq("flag")
+      instance("""topic[?(_.topic_name == "topic2")][-][0].field.t_base """).as[Boolean] shouldBe false
 
-    // experiment condition is satisfied, bucket=87, choose treatment group
-    run(level = 3, eventId = "3", flow = "v2/base") { instance =>
-      instance("""procedure[0].experiment.name""").as[String] shouldBe "base-experiment"
-      instance("""procedure[0].experiment.group""").as[String] shouldBe "treatment-group"
-      instance("""procedure[0].argument.tag""").as[String] shouldBe "treatment"
-    }
-  }
+      // 后向flow记录最早一次执行
+      instance("""topic[?(_.topic_name == "topic2")][-][0].field.c_recursion """).as[Seq[String]] shouldBe Seq("continue")
 
-  test("include experiment") {
-    def run(level: Int, eventId: String, flow: String = "v2/entry")(f: FlowInstance => Unit): Unit = {
-      val event = newEvent(eventId, "a")(flow, "level" -> Value(level))
-      whenReady(executor.execute(event)) { instance => f(instance) }
-    }
+      // 中心flow多次执行都记录
+      instance("""topic[?(_.topic_name == "topic4")].length()""").as[Int] should be > 0
 
-    // experiment condition is not satisfied, fallback to default
-    run(level = 1, eventId = "1") { instance =>
-      instance("""procedure[1].flow_name""").as[String] shouldBe "/v2/base"
-      instance("""procedure[1].experiment.name""").as[String] shouldBe "base-experiment"
-      instance("""procedure[1].experiment.group""").as[String] shouldBe "default_group"
-    }
+      // 前向flow记录最后一次执行
+      instance("""topic[?(_.topic_name == "topic5")][-].length()""").as[Int] shouldBe 1
+      instance("""topic[?(_.topic_name == "topic5")][-][0].field.c_recursion """).as[Seq[String]] shouldBe Seq("finish")
 
-    // experiment condition is satisfied, choose treatment group
-    run(level = 3, eventId = "3") { instance =>
-      instance("""procedure[1].experiment.name""").as[String] shouldBe "base-experiment"
-      instance("""procedure[1].experiment.group""").as[String] shouldBe "treatment-group"
-      instance("""procedure[1].argument.tag""").as[String] shouldBe "treatment"
-    }
-  }
-
-  test("schedule experiment") {
-    def run(level: Int, eventId: String, flow: String)(f: FlowInstance => Unit): Unit = {
-      val event = newEvent(eventId, "a")(flow, "level" -> Value(level))
-      whenReady(executor.execute(event)) { instance => f(instance) }
-    }
-
-    // experiment condition is satisfied, choose treatment group
-    run(level = 3, eventId = "1", flow = "v2/entry") { instance =>
-      instance.getSchedule(0).getParent.getExperimentMap.contains("@level") shouldBe true
+      // delete backward context
+      val logIds = instance("""topic.log_id """).as[Seq[String]].map("&" + _)
+      instance("""delete.length() """).as[Int] should be > 0
+      instance("""delete """).as[Seq[String]] should contain theSameElementsAs(logIds)
+      getLocalTrace().keys.toSeq should contain theSameElementsAs(Seq("$"))
     }
   }
 
-  test("log") {
-    env.updateContext("a", "1", "$delta", Value(0))
-    val event = newEvent("1", "a")("v2/log", "input" -> Value(-1))
-    whenReady(executor.execute(event)) { instance =>
-      println(instance.toJson)
-      instance("""procedure[1].flow_name""").as[String] shouldBe "/v2/log-include"
-      instance("""procedure[1].context_choice""").as[Seq[String]] shouldBe (Seq("/v2/log:negative"))
-      instance("""procedure[1].assign.input""").as[Int] shouldBe -1
-      instance("""procedure[1].assign.tag """).as[String] shouldBe "negative"
-      instance("""procedure[1].assign.output """).as[String] shouldBe "negative"
+  /**
+   * /v2/callback/register --(callback)--> /v2/callback/callback
+   *              \
+   *               --(timeout)--> /v2/callback/timeout
+   *
+   * /v2/callback/source --(include)-> /v2/callback/callback --(include)--> /v2/callback/hello <----
+   *                                                                                         \      \
+   *                                                                                         (include)
+   */
 
-      instance("""procedure[0].flow_name """).as[String] shouldBe "/v2/log"
-      instance("""schedule[0].parent.variable[?(_.reference.name == "output")][-][0].value""").as[String] shouldBe "negative"
-      instance("""schedule[0].parent.choice""").as[Map[String, Map[String, Seq[String]]]] shouldBe
-        Map("/v2/log" -> Map("choice" -> Seq("negative")))
+  test("callback in time") {
+    val token = "#12345"
+    val register = newEvent("1", "a")("v2/callback/register")
+    val callback = newEvent("1", "a")("v2/callback/source")
+    var timeout: FlowEvent = null
+    run(register) { instance =>
+      // token context for callback
+      instance.getToken(0).getArgumentMap.asScala.mapValues(Value(_)) shouldBe
+        Map("link" -> Value(1), "importance" -> Value(1))
+      // println(instance.toJson)
+      // generate timeout event with token
+      timeout = instance.getSchedule(0)
+      timeout.getFlowName shouldBe "/v2/callback/timeout"
+      timeout.getToken shouldBe token
+      getLocalTrace().keySet should contain(token)
+      timeout = instance.getSchedule(0)
+    }
+
+    // callback flow executes with context args
+    run(callback) { instance =>
+      // println(instance.toJson)
+      val callbackFlowArgs = instance.getProcedure(1).getArgumentMap.asScala
+      callbackFlowArgs("#").getDict.getChildMap.mapValues(Value(_)) shouldBe
+        Map("link" -> Value(1), "importance" -> Value(1))
+      getLocalTrace().keySet should not contain (token)
+
+      // after callback, topic3 is complete
+      instance("""topic[0].topic_name """).as[String] shouldBe "topic3"
+      instance("""topic[0].field.length() """).as[Int] shouldBe 8
+      instance("""topic[0].field.t_callback """).as[Boolean] shouldBe true
+      // instance("""topic[0].field.t_timeout """).as[Boolean] shouldBe false
+    }
+
+    // timeout flow got fault
+    run(timeout) { instance =>
+      instance.getProcedure(0).getFaultCount shouldBe 1
+    }
+  }
+
+  test("callback out of time") {
+    val token = "#12345"
+    val register = newEvent("1", "a")("v2/callback/register")
+    val callback = newEvent("1", "a")("v2/callback/source")
+    var timeout: FlowEvent = null
+    run(register) { instance =>
+      timeout = instance.getSchedule(0)
+    }
+
+    // timeout flow executed with context args
+    run(timeout) { instance =>
+      val callbackFlowArgs = instance.getProcedure(0).getArgumentMap.asScala
+      callbackFlowArgs("#").getDict.getChildMap.mapValues(Value(_)) shouldBe
+        Map("link" -> Value(1), "importance" -> Value(1))
+      getLocalTrace().keySet should not contain (token)
+
+      // topic3 is finished
+      instance("""topic[0].topic_name """).as[String] shouldBe "topic3"
+      instance("""topic[0].field.length() """).as[Int] shouldBe 5
+      instance("""topic[0].field.t_callback """).as[Boolean] shouldBe false
+      // instance("""topic[0].field.t_timeout """).as[Boolean] shouldBe true
+    }
+
+    // callback flow got fault
+    run(callback) { instance =>
+      instance.getProcedure(0).getFaultCount should be > 0
+    }
+  }
+
+  /**
+   * /v2/experiment/entry --(include)-> /v2/experiment/hello
+   *      \
+   *       --(schedule)--> /v2/experiment/hello
+   *
+   * /v2/experiment/entry-expt --(include)--> /v2/experiment/hello
+   *       \
+   *        --(schedule)--> /v2/experiment/hello
+   */
+  test("experiment") {
+    val eventId = "1"
+    // bucket 26
+    val event = newEvent("1", "a")("v2/experiment/entry", ("input" -> Value(0)))
+    var scheduleEvent: FlowEvent = null
+    run(event) { instance =>
+      // test experiment traffic and condition
+      instance("""procedure[0].experiment.name """).as[String] shouldBe "test-experiment-2"
+      instance("""procedure[0].flow_name""").as[String] shouldBe "/v2/experiment/entry-expt"
+      instance("""procedure[0].argument.tag """).as[String] shouldBe "treatment"
+      instance("""procedure[0].experiment.group """).as[String] shouldBe "treatment"
+
+      // include flow inherit experiment plan from parent procedure
+      instance("""procedure[1].flow_name""").as[String] shouldBe "/v2/experiment/hello-expt"
+      instance("""procedure[1].experiment.group""").as[String] shouldBe "treatment"
+
+      // schedule event with experiment plan and dependency
+      instance("""schedule[0].flow_name """).as[String] shouldBe "/v2/experiment/hello"
+      instance("""schedule[0].experiment.dependency.result """).as[String] shouldBe "this is treatment"
+      instance("""schedule[0].experiment.plan.length() """).as[Int] shouldBe 2
+
+      scheduleEvent = instance.getSchedule(0)
+    }
+
+    // run schedule event with inherited experiment plan
+    run(scheduleEvent) { instance =>
+      instance("""procedure[0].flow_name""").as[String] shouldBe "/v2/experiment/hello-expt"
+      instance("""procedure[0].experiment.name """).as[String] shouldBe "test-experiment-2"
+      instance("""procedure[0].argument.result """).as[String] shouldBe "this is treatment!"
     }
   }
 
   test("flow graph") {
-    new FlowGraphBuilder(flows = new MockEnv().loadFlows().values.toSeq).build().toJson
+    val flowGraph = FlowGraph.newBuilder(flows = new MockEnv().loadFlows().values.toSeq).build()
+    val json = flowGraph.toJson
+
+    // flow graph contains edge from register flow to callback flow
+    val path1 = flowGraph.getPath("/v2/callback/register", "/v2/callback/callback")
+    path1 should contain theSameElementsAs Seq("/v2/callback/register", "/v2/callback/callback")
+
+    // flow graph does not contain edge from register flow to timeout flow
+    val path2 = flowGraph.getPath("/v2/callback/register", "/v2/callback/timeout")
+    path2 should contain noElementsOf Seq("/v2/callback/register", "/v2/callback/timeout")
+
+    val path3 = flowGraph.getPath("/v2/topic/log", "/v2/topic/hello")
+    path3 should contain theSameElementsAs
+      Seq("/v2/topic/log", "/v2/topic/log-schedule", "/v2/topic/recursion", "/v2/topic/hello")
   }
 }

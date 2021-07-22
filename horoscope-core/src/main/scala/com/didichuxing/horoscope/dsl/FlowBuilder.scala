@@ -6,7 +6,8 @@
 
 package com.didichuxing.horoscope.dsl
 
-import com.didichuxing.horoscope.core.Flow.FlowConf
+import com.didichuxing.horoscope.core.FlowConf
+import com.didichuxing.horoscope.core.FlowConf._
 import com.didichuxing.horoscope.core.FlowDslMessage.{CompositorDef, FlowDef}
 import com.didichuxing.horoscope.core.{Compositor, Flow}
 import com.didichuxing.horoscope.runtime.expression.{BuiltIn, Expression, ExpressionBuilder}
@@ -113,10 +114,10 @@ class FlowBuilder(flowDef: FlowDef, flowConf: FlowConf)(
   }
 
   case class IncludeBuilder(scope: String, flow: String)(
-    args: Map[String, NodeBuilder]
+    args: Map[String, NodeBuilder], token: Option[NodeBuilder]
   ) extends GenericNodeBuilder[Include] with ProcedureSymbol {
     lazy val result: Include = Include(scope, flow)(
-      args.mapValues(_.result), exports.mapValues(_.result)
+      args.mapValues(_.result), exports.mapValues(_.result), token.map(_.result)
     )
 
     override def builders: Seq[NodeBuilder] = this :: Nil
@@ -129,6 +130,21 @@ class FlowBuilder(flowDef: FlowDef, flowConf: FlowConf)(
       }
       exports(name)
     }
+  }
+
+  case class CallbackBuilder(scope: String, flow: String, token: NodeBuilder, definition: CallbackConf)(
+    args: Map[String, NodeBuilder], timeout: Duration, timeoutFlow: Option[String]
+  ) extends GenericNodeBuilder[Callback] with ProcedureSymbol {
+    lazy val result: Callback = {
+      Callback(scope, flow, token.result, definition)(
+        args.mapValues(_.result), timeout, timeoutFlow)
+    }
+
+    override def export(name: String): NodeBuilder = {
+      panic(s"should not export variable $name from callback $scope")
+    }
+
+    override def builders: Seq[NodeBuilder] = this :: Nil
   }
 
   case class SubscribeBuilder(scope: String, flow: String, definition: SubscribeConf)(
@@ -145,9 +161,10 @@ class FlowBuilder(flowDef: FlowDef, flowConf: FlowConf)(
   }
 
   case class ScheduleBuilder(scope: String, flow: String)(
-    args: Map[String, NodeBuilder], trace: Option[NodeBuilder], waitTime: Duration
+    args: Map[String, NodeBuilder], trace: Option[NodeBuilder], waitTime: Duration, token: Option[NodeBuilder] = None
   ) extends GenericNodeBuilder[Schedule] with ProcedureSymbol {
-    lazy val result: Schedule = Schedule(scope, flow, trace.map(_.result))(args.mapValues(_.result), waitTime)
+    lazy val result: Schedule = Schedule(scope, flow, trace.map(_.result))(
+      args.mapValues(_.result), waitTime, token.map(_.result))
 
     override def builders: Seq[NodeBuilder] = this :: Nil
 
@@ -391,7 +408,8 @@ class FlowBuilder(flowDef: FlowDef, flowConf: FlowConf)(
     }
 
     def withFlowConf(flowConf: FlowConf): this.type = {
-      flowConf.parsedSubscribeConf.foreach(parseSubscribe)
+      flowConf.parseSubscribeConf.foreach(parseSubscribe)
+      flowConf.parseCallbackConf.foreach(parseCallback)
 
       this
     }
@@ -412,6 +430,23 @@ class FlowBuilder(flowDef: FlowDef, flowConf: FlowConf)(
       } catch {
         case cause: Throwable =>
           error(s"parse subscribe config failed, name: ${subscribe.name}, cause: ${cause.getMessage}")
+      }
+    }
+
+    def parseCallback(callback: CallbackConf): Unit = {
+      try {
+        val scope = callback.name
+        require(!symbols.contains(scope), s"symbol $scope already exists")
+
+        val args = callback.args.evaluateFor(scope)
+        val token = ("token" -> callback.token).evaluateFor(scope)
+        val builder = CallbackBuilder(scope, callback.callbackFlow, token, callback)(
+          args, Duration(callback.timeout), callback.timeoutFlow)
+        children += builder
+        symbols += scope -> builder
+      } catch {
+        case cause: Throwable =>
+          error(s"parse callback config failed, name: ${callback.name}, cause: ${cause.getMessage}")
       }
     }
 
@@ -444,7 +479,13 @@ class FlowBuilder(flowDef: FlowDef, flowConf: FlowConf)(
       val scope = message.getScope
       require(!symbols.contains(scope), s"symbol $scope already exists")
 
-      val builder = IncludeBuilder(scope, message.getFlowName)(message.getArgumentList.evaluateFor(scope))
+      val token = if (message.hasToken) {
+        Some(message.getToken.evaluate(scope))
+      } else {
+        None
+      }
+      val builder = IncludeBuilder(scope, message.getFlowName
+      )(message.getArgumentList.evaluateFor(scope), token)
       children += builder
       symbols += scope -> builder
     }
@@ -465,7 +506,13 @@ class FlowBuilder(flowDef: FlowDef, flowConf: FlowConf)(
         Duration.Zero
       }
 
-      val builder = ScheduleBuilder(scope, message.getFlowName)(args, trace, duration)
+      val token = if (message.hasToken) {
+        Some(message.getToken.evaluate(scope, "#"))
+      } else {
+        None
+      }
+
+      val builder = ScheduleBuilder(scope, message.getFlowName)(args, trace, duration, token)
       children += builder
       symbols += scope -> builder
     }

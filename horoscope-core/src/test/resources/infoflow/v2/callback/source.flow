@@ -1,0 +1,7 @@
+# /v2/callback/source
+
+***
+    uuid <- "12345"
+    haha <- 1
+    <callback_scope> >uuid => /v2/callback/callback?input=haha
+***

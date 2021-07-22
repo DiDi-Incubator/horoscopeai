@@ -1,0 +1,9 @@
+# /v2/callback/register
+
+***
+    uuid <- "12345"
+    link <- 1
+    importance <- 1
+    meta <- "/v2/callback/register"
+    // $q <- 1
+***

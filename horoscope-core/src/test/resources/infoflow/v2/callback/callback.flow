@@ -1,0 +1,11 @@
+# /v2/callback/callback
+*log="enabled"
+
+***
+    token_context <- @#
+    i <- @input
+    link <- token_context.link
+    importance <- token_context.importance
+
+    <hello_scope> => /v2/callback/hello
+***

@@ -1,7 +1,8 @@
-# /v2/log-schedule
+# /v2/topic/log-schedule
 
 ***
     input <~ @input
     tag <- @tag
     result <- "this is " + tag
+    <recursion> => /v2/topic/recursion
 ***

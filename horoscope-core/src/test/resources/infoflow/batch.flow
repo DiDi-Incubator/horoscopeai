@@ -1,5 +1,4 @@
 # /test/batch
-* mode = "compatible"
 
 * Concat
 ``` concat

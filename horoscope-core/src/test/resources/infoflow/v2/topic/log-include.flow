@@ -1,0 +1,14 @@
+# /v2/topic/log-include
+*log="enabled"
+
+***
+    input <~ @input
+    tag <- @tag
+    <> {
+        ? flag = true
+        => {
+            result <- "tag is " + tag
+        }
+    }
+
+***

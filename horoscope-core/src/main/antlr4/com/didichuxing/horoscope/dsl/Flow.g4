@@ -37,8 +37,8 @@ statement
     | naming? UCAMEL LPAREN compositeArgumentList RPAREN # Composite
     | naming? LBRACK UCAMEL LPAREN ('_' | compositeArgumentList) RPAREN '<-' expression RBRACK # BatchComposite
     | '<>' '{' (choice NL| NL)+ '}' # Branch
-    | '<' SNAKE '>' '+' STRING? '=>' URI flowArgumentList ('#' trace=evaluate)? # Schedule
-    | '<' SNAKE '>' '=>' URI flowArgumentList # Include
+    | '<' SNAKE '>' '+' STRING? ('>' token=evaluate)? '=>' URI flowArgumentList ('#' trace=evaluate)? # Schedule
+    | '<' SNAKE '>' ('>' token=evaluate)? '=>'  URI flowArgumentList # Include
     ;
 
 naming
@@ -143,6 +143,7 @@ variable
     : ('@' | '$')? name
     | '@'
     | '$'
+    | '@#'
     ;
 
 name

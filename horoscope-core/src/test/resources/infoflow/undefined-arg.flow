@@ -1,5 +1,4 @@
 # /test/undefined-arg
-* mode = "compatible"
 
 ***
     arg <- @undefined_arg

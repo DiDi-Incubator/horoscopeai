@@ -136,8 +136,6 @@ class RedisTraceStore(executionContext: ExecutionContext = null) extends Abstrac
       val pipeline = jedis.pipelined()
       val event = instance.getEvent
       val traceId = event.getTraceId
-      //1. goto
-      goto(source, instance, pipeline)
       //2. context
       context(instance, pipeline)
       //3. del
@@ -147,30 +145,13 @@ class RedisTraceStore(executionContext: ExecutionContext = null) extends Abstrac
       scheduler(source, instance, pipeline)
       //同步执行
       pipeline.sync()
+    } catch {
+      case e: Throwable =>
+        error(s"got an exception when commit event to redis, ${e.getMessage}")
     } finally {
       close(jedis)
     }
     instance.build()
-  }
-
-  private def goto(source: String, instance: FlowInstance.Builder, pipeline: Pipeline): Unit = {
-    if (instance.hasGoto) {
-      val goto = instance.getGoto
-      if (goto.hasScheduledTimestamp && goto.getScheduledTimestamp > 0) {
-        //延迟执行
-        val schSource = Utils.schStoreCol(config)
-        val slotId = getSlot(goto.getTraceId, slotCount)
-        info(("msg", "delay schedule slot"), ("source", source), ("slot_id", slotId))
-        val gotoKey = getMailboxKey(schSource, slotId)
-        pipeline.hset(toBytes(gotoKey), toBytes(goto.getEventId), goto.toByteArray)
-      } else {
-        //立即执行
-        val slotId = getSlot(goto.getTraceId, slotCount)
-        info(("msg", "instantly schedule slot"), ("source", source), ("slot_id", slotId))
-        val gotoKey = getMailboxKey(source, slotId)
-        pipeline.hset(toBytes(gotoKey), toBytes(goto.getEventId), goto.toByteArray)
-      }
-    }
   }
 
   private def context(instance: FlowInstance.Builder, pipeline: Pipeline): Unit = {
@@ -183,18 +164,28 @@ class RedisTraceStore(executionContext: ExecutionContext = null) extends Abstrac
       val value = v.toByteArray
       contexts.put(name, value)
     })
-    //context v1
-    instance.getAssignList.foreach(assign => {
-      val name = assign.getName
-      if (name.startsWith(CONTEXT_VAL_FLAG)) {
-        val flowValue = assign.getValue
-        val valueRef = ValueReference.newBuilder().setEventId(event.getEventId).setName(name).build()
-        val traceVal = TraceVariable.newBuilder().setReference(valueRef).setValue(flowValue).build()
-        contexts.put(toBytes(name), traceVal.toByteArray)
-      }
+    // log backward context
+    instance.getBackwardList.foreach(b => {
+      val logId = toBytes(b.getLogId)
+      val value = TraceVariable.newBuilder().setValue(
+        FlowValue.newBuilder().setBinary(b.toByteString)
+      ).build().toByteArray
+      contexts.put(logId, value)
     })
+    // callback token context
+    instance.getTokenList.foreach(t => {
+      val token = toBytes(t.getToken)
+      val value = TraceVariable.newBuilder().setValue(
+        FlowValue.newBuilder().setBinary(t.toByteString)
+      ).build().toByteArray
+      contexts.put(token, value)
+    })
+
     val contextKey = toBytes(getContextKey(traceId))
     pipeline.hmset(contextKey, contexts)
+    // delete trace context keys
+    val deletes = instance.getDeleteList.toSeq.map(toBytes)
+    if (deletes.nonEmpty) pipeline.hdel(contextKey, deletes: _*)
     pipeline.expire(contextKey, contextTTL)
   }
 
@@ -469,7 +460,13 @@ class RedisTraceStore(executionContext: ExecutionContext = null) extends Abstrac
                 jedis = pool.getResource
                 val context = getCurrentContext(traceId).map {
                   case (key, value) =>
-                    (key, JsonFormat.printer().print(value.getValue).parseJson)
+                    if (key.startsWith("#")) {
+                      (key, JsonFormat.printer().print(TokenContext.parseFrom(value.getValue.getBinary)).parseJson)
+                    } else if (key.startsWith("&")) {
+                      (key, JsonFormat.printer().print(BackwardContext.parseFrom(value.getValue.getBinary)).parseJson)
+                    } else {
+                      (key, JsonFormat.printer().print(value.getValue).parseJson)
+                    }
                 }
                 context.toMap.toJson
               } finally {

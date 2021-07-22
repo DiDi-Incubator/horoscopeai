@@ -26,6 +26,7 @@ class ZookeeperConfigStoreSuite extends FunSuite
   with MockFactory
   with BeforeAndAfter
   with ScalatestRouteTest {
+  import ZookeeperConfigStore._
 
   val zookeeper: TestingServer = new TestingServer(false)
   val curator: CuratorFramework = CuratorFrameworkFactory.builder()
@@ -65,7 +66,7 @@ class ZookeeperConfigStoreSuite extends FunSuite
 
   test("try to get by method - empty") {
     val store = newStore()
-    an[IllegalArgumentException] should be thrownBy store.getLogConf("nothing")
+    an[IllegalArgumentException] should be thrownBy store.getConf("nothing", LOG_TYPE)
   }
 
   test("get config list with no folder exist") {
@@ -90,7 +91,7 @@ class ZookeeperConfigStoreSuite extends FunSuite
 
   test("get config list by type") {
     val store = newStore()
-    val list: List[Config] = store.getLogConfList
+    val list: List[Config] = store.getConfList(LOG_TYPE)
     list shouldBe a[List[Any]]
   }
 
@@ -121,7 +122,7 @@ class ZookeeperConfigStoreSuite extends FunSuite
     Thread.sleep(1000)
 
     val store = newStore()
-    val config = store.getLogConf("test")
+    val config = store.getConf("test", LOG_TYPE)
     config shouldBe a[Config]
   }
 
@@ -131,7 +132,7 @@ class ZookeeperConfigStoreSuite extends FunSuite
     Thread.sleep(1000)
 
     val store = newStore()
-    val list = store.getLogConfList
+    val list = store.getConfList(LOG_TYPE)
     list shouldBe a[List[Config]]
   }
 
@@ -152,7 +153,7 @@ class ZookeeperConfigStoreSuite extends FunSuite
 
     val store = newStore()
 
-    store.register(listener)
+    store.registerListener(listener)
     putByCurator()
     Thread.sleep(1000)
     listener.messages should contain("config has changed === I will update my config")

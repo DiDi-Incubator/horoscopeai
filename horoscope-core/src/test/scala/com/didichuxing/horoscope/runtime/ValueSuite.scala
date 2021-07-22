@@ -7,7 +7,6 @@
 package com.didichuxing.horoscope.runtime
 
 import com.didichuxing.horoscope.core.FlowRuntimeMessage
-import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowInstance.Choose
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.{FlowInstance, FlowValue, TraceVariable}
 
 import scala.languageFeature.implicitConversions
@@ -163,8 +162,6 @@ class ValueSuite extends FunSuite with Matchers with Logging {
         .setFlowName("f1")
         .putArgument("@s1", TraceVariable.newBuilder().setValue(flowValue).build())
       )
-      .addChoose(Choose.newBuilder.setChoice("if1"))
-      .addChoose(Choose.newBuilder.setChoice("if2"))
       .setStartTime(System.currentTimeMillis())
       .setEndTime(System.currentTimeMillis())
       .build()

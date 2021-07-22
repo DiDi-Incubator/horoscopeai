@@ -68,12 +68,14 @@ message ScheduleStatement {
     repeated NamedExpression argument = 3;
     optional string schedule_time = 4;
     optional EvaluateDef trace = 5;
+    optional EvaluateDef token = 6;
 }
 
 message IncludeStatement {
     required string scope = 1;
     required string flow_name = 2;
     repeated NamedExpression argument = 3;
+    optional EvaluateDef token = 4;
 }
 
 message BranchStatement {

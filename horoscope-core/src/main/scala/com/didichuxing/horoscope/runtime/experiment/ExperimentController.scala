@@ -1,9 +1,11 @@
 package com.didichuxing.horoscope.runtime.experiment
 
-import com.didichuxing.horoscope.runtime.experiment.ExperimentController.ExperimentChoice
-import com.didichuxing.horoscope.runtime.{Value, ValueDict}
+import com.didichuxing.horoscope.core.FlowRuntimeMessage._
+import com.didichuxing.horoscope.runtime.experiment.ExperimentController._
 import com.didichuxing.horoscope.runtime.expression.{BuiltIn, Expression}
+import com.didichuxing.horoscope.runtime.{Value, ValueDict}
 import com.typesafe.config.Config
+import scala.collection.JavaConverters._
 
 trait ControllerFactory {
   def name: String
@@ -11,14 +13,33 @@ trait ControllerFactory {
   def create(config: Config)(builtIn: BuiltIn): ExperimentController
 }
 
+// The experiment controller is one-to-one with the experiment conf.
 trait ExperimentController {
-  def evaluate(args: ValueDict): ExperimentChoice
+
+  def query(args: ValueDict): Option[ExperimentPlan]
 
   def dependency: Map[String, Expression]
+
+  def priority: Int
 }
 
 object ExperimentController {
+  case class FlowOption(replacement: String, params: Map[String, String])
+  case class ExperimentPlan(name: String, group: String, flowOptions: Map[String, FlowOption])
 
-  case class ExperimentChoice(name: String, group: String, flow: String, params: Map[String, Value])
-
+  implicit class ExperimentPlanHelper(plan: ExperimentPlan) {
+    def experimentContext: ExperimentContext = {
+      val builder = ExperimentContext.newBuilder()
+        .setName(plan.name).setGroup(plan.group)
+      for ((original, flowOption) <- plan.flowOptions) {
+        val args = flowOption.params.mapValues(v => Value(v).as[FlowValue])
+        val flowPlanBuilder = ExperimentContext.Alternative.newBuilder()
+          .setOriginal(original)
+          .setReplacement(flowOption.replacement)
+          .putAllArgument(args.asJava)
+        builder.addPlan(flowPlanBuilder.build())
+      }
+      builder.build()
+    }
+  }
 }

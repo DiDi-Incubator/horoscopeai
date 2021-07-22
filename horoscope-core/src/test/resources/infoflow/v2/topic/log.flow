@@ -1,9 +1,9 @@
-# /v2/log
+# /v2/topic/log
 
 ***
     a <- @input
-    b <- $delta
-    $delta <- 1
+    //b <- $delta
+    //$delta <- 1
     <> {
         ? positive = a > 0
         => {
@@ -20,8 +20,8 @@
     }
 
     result <- 1
-    <include> => /v2/log-include?input=@input & tag="negative"
+    <include> => /v2/topic/log-include?input=@input & tag="negative"
     export <- include->tag
-    <schedule> + => /v2/log-schedule?input=@input
+    <schedule> + => /v2/topic/log-schedule?input=@input
 
 ***

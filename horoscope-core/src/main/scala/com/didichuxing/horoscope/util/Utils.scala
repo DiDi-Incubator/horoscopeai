@@ -12,6 +12,8 @@ import java.util.UUID
 import java.util.zip.CRC32
 
 import akka.actor.ActorSelection
+import akka.http.scaladsl.model.StatusCodes
+import akka.http.scaladsl.server.StandardRoute
 import akka.util.Timeout
 import akka.pattern.ask
 import com.didichuxing.horoscope.core.FlowRuntimeMessage
@@ -167,53 +169,6 @@ object Utils extends Logging {
   }
 
   /**
-   * eliminate tmp assign and args value
-   */
-  def simplifyLog(flowInstance: FlowRuntimeMessage.FlowInstanceOrBuilder): FlowRuntimeMessage.FlowInstanceOrBuilder = {
-    val b = FlowRuntimeMessage.FlowInstance.newBuilder()
-    b.setFlowId(flowInstance.getFlowId)
-    b.setEvent(flowInstance.getEvent)
-    b.addAllChoose(flowInstance.getChooseList)
-    if (flowInstance.hasGoto) {
-      b.setGoto(flowInstance.getGoto)
-    }
-    b.setStartTime(flowInstance.getStartTime)
-    b.setEndTime(flowInstance.getEndTime)
-    if (flowInstance.getProcedureCount > 0) {
-      b.addAllProcedure(flowInstance.getProcedureList)
-    }
-    if (flowInstance.getScheduleCount > 0) {
-      b.addAllSchedule(flowInstance.getScheduleList)
-    }
-    flowInstance.getAssignList.foreach { a =>
-      if (a.getName.startsWith("-") || a.getName().startsWith("~")) {
-        // ignore value
-        val ta = b.addAssignBuilder()
-          .setValue(FlowValue.newBuilder())
-          .setName(a.getName)
-        if (a.hasChoice) ta.setChoice(a.getChoice)
-        if (a.hasCompositor) ta.setCompositor(a.getCompositor)
-        if (a.getDependencyList.size() > 0) ta.addAllDependency(a.getDependencyList)
-        if (a.hasError) ta.setError(a.getError)
-        if (a.getCompositeArgumentCount > 0) ta.putAllCompositeArgument(a.getCompositeArgumentMap)
-        b.addAssign(ta)
-      } else {
-        b.addAssign(a)
-      }
-    }
-    b
-  }
-
-  def ignoreLog(flowInstance: FlowInstanceOrBuilder): Boolean = {
-    val logIgnoreOption = flowInstance.getAssignList.find(_.getName == "flow_log_ignore")
-    if (logIgnoreOption.isDefined) {
-      Try(Value(logIgnoreOption.get.getValue).as[Boolean]).getOrElse(false)
-    } else {
-      false
-    }
-  }
-
-  /**
    * trace store 中存储gotoEvent的column
    */
   def schStoreCol(config: Config): String = {
@@ -227,7 +182,7 @@ object Utils extends Logging {
     sw.toString()
   }
 
-  def bucket(value: Value): Int = {
+  def bucket(value: Value, suffix: Option[String] = None): Int = {
     val uuid = value match {
       case Text(text) => UUID.nameUUIDFromBytes(text.getBytes).toString
       case NumberValue(v) => UUID.nameUUIDFromBytes(v.toDouble.toString.getBytes).toString
@@ -235,8 +190,23 @@ object Utils extends Logging {
       case _ => UUID.randomUUID().toString
     }
 
-    val slot = Utils.getSlot(uuid,100)
+    val slot = if (suffix.isDefined) {
+      Utils.getSlot(uuid + suffix,100)
+    } else {
+      Utils.getSlot(uuid,100)
+    }
 
     slot
+  }
+
+  def run(block: => Unit): StandardRoute = {
+    import akka.http.scaladsl.server.Directives._
+    try {
+      block
+      complete(StatusCodes.OK)
+    } catch {
+      case e: Throwable =>
+        complete(StatusCodes.NotAcceptable, e.getMessage)
+    }
   }
 }

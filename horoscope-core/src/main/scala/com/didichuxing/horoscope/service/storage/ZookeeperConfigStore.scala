@@ -1,17 +1,17 @@
 package com.didichuxing.horoscope.service.storage
 
 import akka.http.scaladsl.model.{HttpResponse, StatusCodes}
-import akka.http.scaladsl.server.Route
-import com.didichuxing.horoscope.core.{ConfigChangeListener, ConfigStore}
-import com.didichuxing.horoscope.util.Logging
+import akka.http.scaladsl.server.{Route, StandardRoute}
+import com.didichuxing.horoscope.core.{ConfigChangeListener, ConfigChecker, ConfigStore}
+import com.didichuxing.horoscope.util.{FlowConfParser, Logging, Utils}
 import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.curator.framework.CuratorFramework
 import org.apache.curator.framework.recipes.cache._
 import org.apache.zookeeper.CreateMode
 import org.apache.zookeeper.data.Stat
 import spray.json.{JsValue, _}
-
 import java.util.concurrent.{Executors, Semaphore}
+
 import scala.collection.JavaConverters.asScalaBufferConverter
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.concurrent.ExecutionContext
@@ -20,8 +20,11 @@ import scala.util.parsing.json.JSON._
 class ZookeeperConfigStore(curator: CuratorFramework) extends ConfigStore with TreeCacheListener with Logging {
 
   import akka.http.scaladsl.server.Directives._
+  import ZookeeperConfigStore._
 
   private val configChangeListeners = ArrayBuffer[ConfigChangeListener]()
+
+  private var configChecker: ConfigChecker = null
 
   private val executor = Executors.newSingleThreadExecutor()
 
@@ -60,35 +63,21 @@ class ZookeeperConfigStore(curator: CuratorFramework) extends ConfigStore with T
     })
   }
 
-  override def getLogConf(name: String): Config = {
-    val path = s"$LOG_TYPE/$name"
+  override def getConf(name: String, confType: String): Config = {
+    val path = s"${confType}/$name"
     getConfByPath(path)
   }
 
-  override def getExperimentConf(name: String): Config = {
-    val path = s"$SUBSCRIPTION_TYPE/$name"
-    getConfByPath(path)
+  override def getConfList(confType: String): List[Config] = {
+    getConfListByType(confType)
   }
 
-  override def getSubscriptionConf(name: String): Config = {
-    val path = s"$EXPERIMENT_TYPE/$name"
-    getConfByPath(path)
-  }
-
-  override def getLogConfList: List[Config] = {
-    getConfListByType(LOG_TYPE)
-  }
-
-  override def getExperimentConfList: List[Config] = {
-    getConfListByType(EXPERIMENT_TYPE)
-  }
-
-  override def getSubscriptionConfList: List[Config] = {
-    getConfListByType(SUBSCRIPTION_TYPE)
-  }
-
-  override def register(listener: ConfigChangeListener): Unit = {
+  override def registerListener(listener: ConfigChangeListener): Unit = {
     configChangeListeners += listener
+  }
+
+  override def registerChecker(checker: ConfigChecker): Unit =  {
+    configChecker = checker
   }
 
   override def api: Route = {
@@ -204,9 +193,12 @@ class ZookeeperConfigStore(curator: CuratorFramework) extends ConfigStore with T
             if (!text.isInstanceOf[String] || parseFull(text).isEmpty) {
               complete(HttpResponse(StatusCodes.BadRequest, entity = ""))
             } else {
-              update(s"$configType/$configName", text)
+              Utils.run {
+                configChecker.check(configName, configType, ConfigFactory.parseString(text))
+                update(s"$configType/$configName", text)
+                complete(HttpResponse(status = StatusCodes.OK, entity = "successfully updated"))
+              }
             }
-            complete(HttpResponse(status = StatusCodes.OK, entity = "successfully updated"))
           }
         },
         delete {
@@ -227,7 +219,8 @@ class ZookeeperConfigStore(curator: CuratorFramework) extends ConfigStore with T
   }
 
   private def configTypeValid(configType: String): Boolean = {
-    configType == LOG_TYPE || configType == SUBSCRIPTION_TYPE || configType == EXPERIMENT_TYPE
+    configType == LOG_TYPE || configType == SUBSCRIPTION_TYPE || configType == EXPERIMENT_TYPE ||
+      configType == CALLBACK_TYPE
   }
 
   private def createFolderIfNotExist(configType: String): Unit = {
@@ -248,6 +241,7 @@ class ZookeeperConfigStore(curator: CuratorFramework) extends ConfigStore with T
       case LOG_TYPE => "log-conf"
       case SUBSCRIPTION_TYPE => "subscriptions"
       case EXPERIMENT_TYPE => "experiments"
+      case CALLBACK_TYPE => "callbacks"
     }
     val result = ListBuffer[JsValue]()
     list.foreach(x => {
@@ -257,14 +251,51 @@ class ZookeeperConfigStore(curator: CuratorFramework) extends ConfigStore with T
         result.append(jsonAst)
       }
     })
+
     val sortedList = result.sortBy(_.asJsObject.getFields("name").head.toString)
     val map = Map(
       typeName -> scala.util.parsing.json.JSONArray(sortedList.toList)
     )
     scala.util.parsing.json.JSONObject(map).toString()
   }
+}
+
+object ZookeeperConfigStore {
+  import FlowConfParser._
 
   val LOG_TYPE = "log"
   val SUBSCRIPTION_TYPE = "subscription"
   val EXPERIMENT_TYPE = "experiment"
+  val CALLBACK_TYPE = "callback"
+
+  // ensure all flow tags are completely defined
+  def checkLogConf(config: Config): Unit = {
+    val logConf = config.parseLogConf()
+    val flows = logConf.fields.filterNot(_.`type` == "tag").map(_.flow).toSet
+    val tagFlows = logConf.fields.filter(_.`type` == "tag").map(_.flow).toSet
+    val notTagged = flows.find(!tagFlows.contains(_))
+    assert(notTagged.isEmpty, s"no tag is defined for flow ${notTagged.get}")
+    val fields = logConf.fields.map(_.name)
+    assert(fields.distinct.length == fields.length, "config has duplicate field name")
+  }
+
+  def checkConfName(name: String, config: Config): Unit = {
+    val contentName = config.getString("name")
+    assert(contentName == name, "name in content is wrong")
+  }
+
+  // ensure that priorities are not duplicated and experimental flow sum do not exceed 1
+  def checkExperimentConf(config: Config, existing: Seq[Config]): Unit = {
+    val currentName = config.getString("name")
+    val total = Seq(config) ++ existing.filterNot(_.getString("name") == currentName)
+    val trafficSum = total.map { conf =>
+      val enabled = conf.getBoolean("enabled")
+      val traffic = conf.getIntList("traffic").asScala
+      val range = traffic(1) - traffic.head
+      (enabled, range)
+    }.filter(_._1).map(_._2).sum
+    val priorities = total.map(_.getInt("priority"))
+    assert(priorities.toSet.size == priorities.length, s"duplicate experiment priority")
+    // assert(trafficSum <= 100, s"traffic ratio sum of all enabled experiment exceed than 100%")
+  }
 }

@@ -1,0 +1,7 @@
+# /v2/experiment/hello
+*log="enabled"
+
+***
+    name <- "hello"
+    result <- @result
+***

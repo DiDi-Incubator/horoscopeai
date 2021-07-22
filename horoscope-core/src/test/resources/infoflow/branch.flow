@@ -1,5 +1,4 @@
 # /test/branch
-* mode = "compatible"
 
 ***
     l <- @level2

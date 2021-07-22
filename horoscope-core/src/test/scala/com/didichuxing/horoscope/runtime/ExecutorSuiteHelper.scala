@@ -44,27 +44,12 @@ abstract class ExecutorSuiteHelper extends FunSuite
   }
 
   implicit class FlowInstanceHelper(instance: FlowInstance) {
-    lazy val assigns: Map[String, FlowInstance.Assign] = {
-      val keys = instance.getAssignList.map(_.getName)
-      assert(keys.distinct.length == keys.length, instance.toString)
-      instance.getAssignList.map(a => (a.getName, a)).toMap
-    }
-
-    lazy val chooses: Map[String, FlowInstance.Choose] = {
-      val keys = instance.getChooseList.map(_.getChoice)
-      assert(keys.distinct.length == keys.length)
-      instance.getChooseList.map(c => (c.getChoice, c)).toMap
-    }
 
     def apply(code: String): Value = {
       Value(instance).asInstanceOf[ValueDict].eval(code)
     }
 
     def toJson: String = Value(instance).toJson
-  }
-
-  implicit class AssignHelper(assign: FlowInstance.Assign) {
-    def value: Value = Value(assign.getValue)
   }
 
 }

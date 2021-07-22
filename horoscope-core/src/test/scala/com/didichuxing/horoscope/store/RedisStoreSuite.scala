@@ -7,8 +7,6 @@
 package com.didichuxing.horoscope.store
 
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.{FlowEvent, FlowInstance, FlowValue}
-import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowEvent.TokenStatus
-import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowInstance.Assign
 import com.didichuxing.horoscope.service.storage.RedisTraceStore
 import com.didichuxing.horoscope.util.{Logging, Utils}
 import com.didichuxing.horoscope.util.Utils.schStoreCol
@@ -73,8 +71,6 @@ class RedisStoreSuite extends FunSuite with BeforeAndAfter with Logging {
     val instance = FlowInstance.newBuilder()
       .setFlowId("")
       .setEvent(event)
-      .setGoto(createDelayGotoEvent(traceId, gotoFlowName))
-      .addAssign(Assign.newBuilder().setName("$test").setValue(FlowValue.newBuilder().setText("hello")))
 
     //3. commit event 1(source)
     val flowInstance = traceStore.commitEvent(source, instance)
@@ -83,9 +79,6 @@ class RedisStoreSuite extends FunSuite with BeforeAndAfter with Logging {
     //4. execute event 2
     val instance2 = FlowInstance.newBuilder()
       .setFlowId("")
-      .setEvent(flowInstance.getGoto)
-      .setGoto(createDelayGotoEvent(traceId, gotoFlowName))
-      .addAssign(Assign.newBuilder().setName("$test2").setValue(FlowValue.newBuilder().setText("hello2")))
 
     //5. commit event 2(goto)
     val flowInstance2 = traceStore.commitEvent(schStoreCol(hconf), instance2)
@@ -94,8 +87,6 @@ class RedisStoreSuite extends FunSuite with BeforeAndAfter with Logging {
     //6. execute event 3
     val instance3 = FlowInstance.newBuilder()
       .setFlowId("")
-      .setEvent(flowInstance2.getGoto)
-      .addAssign(Assign.newBuilder().setName("$test").setValue(FlowValue.newBuilder().setText("hello2")))
 
     //7. commit event 3
     val flowInstance3 = traceStore.commitEvent(schStoreCol(hconf), instance3)
@@ -120,8 +111,6 @@ class RedisStoreSuite extends FunSuite with BeforeAndAfter with Logging {
     val instance = FlowInstance.newBuilder()
       .setFlowId("")
       .setEvent(event)
-      .setGoto(createGotoEvent(traceId, gotoFlowName))
-      .addAssign(Assign.newBuilder().setName("$test").setValue(FlowValue.newBuilder().setText("hello")))
       .addSchedule(createSchedulerEvent(gotoFlowName, 0))
       .addSchedule(createSchedulerEvent(gotoFlowName, 0))
 
@@ -132,9 +121,6 @@ class RedisStoreSuite extends FunSuite with BeforeAndAfter with Logging {
     //4. execute event 2
     val instance2 = FlowInstance.newBuilder()
       .setFlowId("")
-      .setEvent(flowInstance.getGoto)
-      .setGoto(createGotoEvent(traceId, gotoFlowName))
-      .addAssign(Assign.newBuilder().setName("$test2").setValue(FlowValue.newBuilder().setText("hello2")))
       .addSchedule(createSchedulerEvent(gotoFlowName, System.currentTimeMillis()))
 
     //5. commit event 2(goto)
@@ -144,8 +130,6 @@ class RedisStoreSuite extends FunSuite with BeforeAndAfter with Logging {
     //6. execute event 3
     val instance3 = FlowInstance.newBuilder()
       .setFlowId("")
-      .setEvent(flowInstance2.getGoto)
-      .addAssign(Assign.newBuilder().setName("$test").setValue(FlowValue.newBuilder().setText("hello2")))
 
     //7. commit event 3
     val flowInstance3 = traceStore.commitEvent(source, instance3)
@@ -158,7 +142,6 @@ class RedisStoreSuite extends FunSuite with BeforeAndAfter with Logging {
       .setTraceId(traceId)
       .setFlowName(flowName)
       //.setScheduledTimestamp(System.currentTimeMillis())
-      .setToken(TokenStatus.newBuilder().setName("linkId").setValue("link0001").setOwner(""))
       .build()
   }
 
@@ -168,7 +151,6 @@ class RedisStoreSuite extends FunSuite with BeforeAndAfter with Logging {
       .setTraceId(traceId)
       .setFlowName(flowName)
       .setScheduledTimestamp(System.currentTimeMillis())
-      .setToken(TokenStatus.newBuilder().setName("linkId").setValue("link0001").setOwner(""))
       .build()
   }
 

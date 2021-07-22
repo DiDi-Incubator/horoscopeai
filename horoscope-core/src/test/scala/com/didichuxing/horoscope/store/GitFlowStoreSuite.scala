@@ -24,6 +24,7 @@ class GitFlowStoreSuite extends FunSuite
   import akka.http.scaladsl.model._
   import spray.json._
   import DefaultJsonProtocol._
+  import com.didichuxing.horoscope.service.storage.ZookeeperConfigStore._
 
   private val configStore = mock[ConfigStore]
   private val uri = Resources.getResource("infoflow").toURI
@@ -52,17 +53,16 @@ class GitFlowStoreSuite extends FunSuite
 
   override def beforeAll(): Unit = {
     val fileStore = new MockFileStore()
-    (configStore.getExperimentConfList _).expects().anyNumberOfTimes().returning(Nil)
-    (configStore.getSubscriptionConfList _).expects().anyNumberOfTimes().returning(Nil)
-    (configStore.getLogConfList _).expects().anyNumberOfTimes().returning(Nil)
-    (configStore.register _).expects(*).anyNumberOfTimes().returning(Unit)
+    (configStore.getConfList _).expects(*).anyNumberOfTimes().returning(Nil)
+    (configStore.registerListener _).expects(*).anyNumberOfTimes().returning(Unit)
+    (configStore.registerChecker _).expects(*).anyNumberOfTimes().returning(Unit)
 
     flowStore = new GitFlowStore(configStore, fileStore, Map.empty, Map.empty)
   }
 
   test("flow store") {
     flowStore.getFlow("/v2/entry").flowDef.getName shouldBe "/v2/entry"
-    flowStore.getController("/v2/entry") shouldBe None
+    flowStore.getController("/v2/entry") shouldBe Nil
   }
 
   test("resource store") {
@@ -75,10 +75,9 @@ class GitFlowStoreSuite extends FunSuite
   }
 
   test("flow store api") {
-    (configStore.getExperimentConfList _).expects().anyNumberOfTimes().returning(Nil)
-    (configStore.getSubscriptionConfList _).expects().anyNumberOfTimes().returning(Nil)
-    (configStore.getLogConfList _).expects().anyNumberOfTimes().returning(Nil)
-    (configStore.register _).expects(*).anyNumberOfTimes().returning(Unit)
+    (configStore.getConfList _).expects(*).anyNumberOfTimes().returning(Nil)
+    (configStore.registerListener _).expects(*).anyNumberOfTimes().returning(Unit)
+    (configStore.registerChecker _).expects(*).anyNumberOfTimes().returning(Unit)
 
     Get("/list") ~> flowStore.api ~> check {
       responseAs[Set[String]] should contain("/v2/entry")
