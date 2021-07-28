@@ -1,7 +1,7 @@
 package com.didichuxing.horoscope.runtime.experiment
 
-import com.didichuxing.horoscope.core.Flow.Bucket
-import com.didichuxing.horoscope.runtime.experiment.ExperimentController.ExperimentChoice
+import com.didichuxing.horoscope.core.FlowConf.Bucket
+import com.didichuxing.horoscope.runtime.experiment.ExperimentController._
 import com.didichuxing.horoscope.runtime.expression.{BuiltIn, Expression}
 import com.didichuxing.horoscope.runtime.{Value, ValueDict}
 import com.didichuxing.horoscope.util.FlowConfParser._
@@ -20,23 +20,27 @@ class ABTestController(conf: Config)(
   implicit builtIn: BuiltIn
 ) extends ExperimentController with Logging {
 
-  private val DEFAULT_GROUP = "default_group"
   private val exptConf = conf.parseABTestConf()
 
   def dependency: Map[String, Expression] = {
-    (exptConf.condition ++ exptConf.target).flatMap(Expression(_).references).map(ref => ref.name -> ref).toMap
+    (exptConf.condition ++ exptConf.target ++
+      exptConf.groups.flatMap(_.flows.flatMap(_._2.params.values))
+      ).flatMap(Expression(_).references).map(ref => ref.name -> ref).toMap
   }
 
-  override def evaluate(args: ValueDict): ExperimentChoice = {
+  override def query(args: ValueDict): Option[ExperimentPlan] = {
     try {
+      val traffic = exptConf.traffic
       val condition = exptConf.condition.map(Expression(_).apply(args))
-      val target = (exptConf.target orElse Some("@event_id")).map(Expression(_).apply(args))
-      if (condition.forall(!_.as[Boolean])) {
-        // default flow
-        ExperimentChoice(exptConf.name, DEFAULT_GROUP, exptConf.flow, Map())
+      val bucketId = Utils.bucket(Expression("@event_id").apply(args))
+      // condition是空时，默认满足条件
+      if (condition.forall(_.as[Boolean]) && traffic.contains(bucketId)) {
+        val target = (exptConf.target orElse Some("@event_id")).map(Expression(_).apply(args))
+        val targetBucket = Utils.bucket(target.get, Some(exptConf.name))
+        val satisfied = exptConf.groups.find(_.traffic.contains(targetBucket)).get
+        Some(ExperimentPlan(exptConf.name, satisfied.group, satisfied.flows))
       } else {
-        val hit = exptConf.groups.find(_.traffic.contains(Utils.bucket(target.get))).get
-        ExperimentChoice(exptConf.name, hit.group, hit.flow, hit.params)
+        None
       }
     } catch {
       case cause: Throwable =>
@@ -47,11 +51,19 @@ class ABTestController(conf: Config)(
         throw new RuntimeException(msg, cause)
     }
   }
+
+  override def priority: Int = exptConf.priority
 }
 
 object ABTestController {
   case class ABTestConf(name: String, enabled: Boolean, flow: String,
-    condition: Option[String], target: Option[String], groups: Seq[ABTestGroup])
+    condition: Option[String], target: Option[String], groups: Seq[ABTestGroup],
+    priority: Int, traffic: Bucket) {
+    def expressions: Map[String, Seq[String]] = {
+      Map(flow -> (condition ++ target).toSeq)
+    }
+  }
 
-  case class ABTestGroup(group: String, flow: String, params: Map[String, Value], traffic: Bucket)
+  // flows: originalFlow -> FlowOption
+  case class ABTestGroup(group: String, traffic: Bucket, flows: Map[String, FlowOption])
 }

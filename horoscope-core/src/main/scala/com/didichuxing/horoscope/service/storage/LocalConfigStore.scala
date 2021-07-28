@@ -1,6 +1,6 @@
 package com.didichuxing.horoscope.service.storage
 
-import com.didichuxing.horoscope.core.{ConfigChangeListener, ConfigStore}
+import com.didichuxing.horoscope.core.{ConfigChangeListener, ConfigChecker, ConfigStore}
 import com.typesafe.config.{Config, ConfigFactory}
 
 import scala.collection.JavaConverters._
@@ -16,32 +16,37 @@ class LocalConfigStore extends ConfigStore {
   private val experimentConfList = Try(ConfigFactory.load(
     Thread.currentThread().getContextClassLoader, "experiment"
   ).getConfigList("experiments").asScala.toList).getOrElse(Nil)
+  private val callbackConfList = Try(ConfigFactory.load(
+    Thread.currentThread().getContextClassLoader, "callback"
+  ).getConfigList("callbacks").asScala.toList).getOrElse(Nil)
 
-  override def getExperimentConf(name: String): Config = {
-    experimentConfList.find(_.getString("name") == name).orNull
+  import ZookeeperConfigStore._
+
+  override def getConf(name: String, confType: String): Config = {
+    confType match {
+      case LOG_TYPE => logConfList.find(_.getString("name") == name).orNull
+      case SUBSCRIPTION_TYPE => subscribeConfList.find(_.getString("name") == name).orNull
+      case EXPERIMENT_TYPE => experimentConfList.find(_.getString("name") == name).orNull
+      case CALLBACK_TYPE => callbackConfList.find(_.getString("name") == name).orNull
+      case _ => throw new IllegalArgumentException
+    }
   }
 
-  override def getLogConf(name: String): Config = {
-    logConfList.find(_.getString("name") == name).orNull
+  override def getConfList(confType: String): List[Config] =  {
+    confType match {
+      case LOG_TYPE => logConfList
+      case SUBSCRIPTION_TYPE => subscribeConfList
+      case EXPERIMENT_TYPE => experimentConfList
+      case CALLBACK_TYPE => callbackConfList
+      case _ => throw new IllegalArgumentException
+    }
   }
 
-  override def getSubscriptionConf(name: String): Config = {
-    subscribeConfList.find(_.getString("name") == name).orNull
+  override def registerListener(listener: ConfigChangeListener): Unit = {
+    null
   }
 
-  override def getLogConfList: List[Config] = {
-    logConfList
-  }
-
-  override def getSubscriptionConfList: List[Config] = {
-    subscribeConfList
-  }
-
-  override def getExperimentConfList: List[Config] = {
-    experimentConfList
-  }
-
-  override def register(listener: ConfigChangeListener): Unit = {
+  override def registerChecker(checker: ConfigChecker): Unit = {
     null
   }
 }

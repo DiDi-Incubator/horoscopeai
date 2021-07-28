@@ -6,13 +6,12 @@
 
 package com.didichuxing.horoscope.core
 
-import com.didichuxing.horoscope.core.Flow.{FlowConf, LogVariable}
+import com.didichuxing.horoscope.core.Flow.{Topic, TopicFiled}
+import com.didichuxing.horoscope.core.FlowConf._
 import com.didichuxing.horoscope.core.FlowDslMessage.FlowDef
-import com.didichuxing.horoscope.dsl.{CompatibleBuilder, FlowBuilder}
+import com.didichuxing.horoscope.dsl.FlowBuilder
 import com.didichuxing.horoscope.runtime.expression.{BuiltIn, Expression}
 import com.didichuxing.horoscope.util.FlowChart
-import com.didichuxing.horoscope.util.FlowConfParser._
-import com.typesafe.config.Config
 
 import scala.collection.SortedSet
 import scala.collection.mutable.ArrayBuffer
@@ -38,10 +37,9 @@ class Flow(val flowDef: FlowDef, val flowConf: FlowConf)(
 
   def chart: FlowChart = new FlowChart(this)
 
-  var logFields: Seq[LogVariable] = _
+  var totalTopics: Map[String, Topic] = _
 
-  val logChoices: Seq[String] = flowConf.parsedLogConf.filter(_.flow == flowDef.getName).flatMap(_.choices).distinct
-
+  var logVariables: Seq[TopicFiled] = _
 }
 
 object Flow {
@@ -61,7 +59,7 @@ object Flow {
     val mode = flowDef.getConfigMap.getOrDefault("mode", "")
     val builder: Builder = mode match {
       case "compatible" =>
-        new CompatibleBuilder(flowDef, flowConf)
+        throw new NotImplementedError()
       case _ =>
         new FlowBuilder(flowDef, flowConf)
     }
@@ -80,20 +78,21 @@ object Flow {
         }
       }
 
-      flow.logFields = {
-        val flowName = flowDef.getName
-        val current = flowConf.parsedLogConf.filter(_.flow == flowName).flatMap({ conf =>
-          conf.assigns.map { assign =>
-            LogVariable(assign.name, Expression(assign.expression), assign.flow, conf.flow)
+      flow.logVariables = {
+        flowConf.parseLogConf.flatMap({ t =>
+          t.fields.filter(_.flow == flow.name).filter(_.`type` == "variable").map { f =>
+            TopicFiled(f.name, f.`type`, f.expression.map(Expression(_)), f.flow, t.topic, f.isForward)
           }
         })
-        val dependent = flowConf.parsedLogConf.flatMap({ conf =>
-          conf.assigns.filter(_.flow == flow.name).map { assign =>
-            LogVariable(assign.name, Expression(assign.expression), assign.flow, conf.flow)
-          }
-        })
-        val total = (current ++ dependent).distinct
-        total.distinct
+      }
+
+      flow.totalTopics = {
+        flowConf.parseLogConf.map { conf =>
+          val variables = conf.fields.map(v =>
+            TopicFiled(v.name, v.`type`, v.expression.map(Expression(_)), v.flow, conf.topic, v.isForward)
+          )
+          conf.topic -> Topic(conf.topic, conf.flow, variables)
+        }.toMap
       }
 
       flow
@@ -182,17 +181,17 @@ object Flow {
   }
 
   case class Include(scope: String, flow: String)(
-    val args: Map[String, Node], val exports: Map[String, Placeholder]
+    val args: Map[String, Node], val exports: Map[String, Placeholder], val token: Option[Node]
   ) extends Node {
-    override val deps: Set[Node] = Set.empty ++ args.values
+    override val deps: Set[Node] = Set.empty ++ args.values ++ token
 
     override val optDeps: Set[Node] = Set.empty
   }
 
   case class Schedule(scope: String, flow: String, trace: Option[Node])(
-    val args: Map[String, Node], val waitTime: Duration
+    val args: Map[String, Node], val waitTime: Duration, val token: Option[Node]
   ) extends Node {
-    override val deps: Set[Node] = args.values.toSet ++ trace
+    override val deps: Set[Node] = args.values.toSet ++ trace ++ token.toSet
 
     override val optDeps: Set[Node] = Set.empty
   }
@@ -205,38 +204,21 @@ object Flow {
     override val optDeps: Set[Node] = Set.empty
   }
 
-  case class FlowConf(logs: Seq[Config] = Nil,
-    subscriptions: Seq[Config] = Nil, experiments: Seq[Config] = Nil
-  ) {
-    def parsedLogConf: Seq[LogConf] = {
-      logs.map(_.parseLogConf()).filter(_.enabled)
-    }
-
-    def parsedSubscribeConf: Seq[SubscribeConf] = {
-      subscriptions.map(_.parseSubscribe()).filter(_.enabled)
-    }
-
-    // only support at most one experiment in one flow
-    def enabledExperiment: Option[String] = {
-      experiments.find(_.getBoolean("enabled")).map(_.getString("name"))
-    }
+  case class Callback(scope: String, flow: String, token: Node, definition: CallbackConf)(
+    val args: Map[String, Node], val timeout: Duration, val timeoutFlow: Option[String]
+  ) extends Node {
+    override val deps: Set[Node] = args.values.toSet ++ Set(token)
+    override val optDeps: Set[Node] = Set.empty
   }
 
-  case class LogConf(flow: String, enabled: Boolean, assigns: Seq[AssignField], choices: Seq[String])
-
-  case class AssignField(flow: String, name: String, expression: String)
-
-  case class SubscribeConf(name: String, enabled: Boolean, publisher: String, subscriber: String,
-    args: Map[String, String], condition: Option[String], target: Option[String], traffic: Bucket)
-
-  case class Bucket(lower: Int, upper: Int) {
-    def contains(value: Int): Boolean = {
-      value >= lower && value < upper
-    }
+  case class Topic(name: String, flow: String, fields: Seq[TopicFiled]) {
+    val variableFields: Seq[TopicFiled] = fields.filter(_.`type` == "variable")
+    val choiceFields: Seq[TopicFiled] = fields.filter(_.`type` == "choice")
+    val tagFields: Seq[TopicFiled] = fields.filter(_.`type` == "tag")
   }
 
-  // variableName, expression, sourceFlow, sinkFlow
-  case class LogVariable(name: String, expression: Expression, from: String, to: String)
+  case class TopicFiled(name: String, `type`: String,
+    expression: Option[Expression], flow: String, topic: String, isForward: Boolean)
 
   sealed trait Node {
     var _leader: Terminator = _

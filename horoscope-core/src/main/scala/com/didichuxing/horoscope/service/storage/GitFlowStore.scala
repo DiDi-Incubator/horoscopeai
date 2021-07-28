@@ -1,26 +1,25 @@
 package com.didichuxing.horoscope.service.storage
 
-import java.io.File
-import java.nio.file.Paths
 import java.util.concurrent.atomic.AtomicReference
 
 import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.server.Route
-import com.didichuxing.horoscope.core.Flow.FlowConf
+import com.didichuxing.horoscope.core.FlowConf
 import com.didichuxing.horoscope.core.FlowDslMessage.{CompositorDef, FlowDef}
 import com.didichuxing.horoscope.core._
 import com.didichuxing.horoscope.dsl.FlowCompiler
 import com.didichuxing.horoscope.runtime.experiment.{ControllerFactory, ExperimentController}
-import com.didichuxing.horoscope.runtime.expression.{BuiltIn, DefaultBuiltIn, LocalJythonBuiltInV2}
-import com.didichuxing.horoscope.service.storage.GitFlowStore.ResourceStore
+import com.didichuxing.horoscope.runtime.expression.{BuiltIn, DefaultBuiltIn, Expression, LocalJythonBuiltInV2}
 import com.didichuxing.horoscope.util.FlowConfParser._
-import com.didichuxing.horoscope.util.{FlowGraphBuilder, Logging}
+import com.didichuxing.horoscope.util.{FlowGraph, Logging, Utils}
 import org.antlr.v4.runtime.CharStreams
-import org.apache.commons.io.FileUtils
+import com.typesafe.config.{Config, ConfigValueFactory}
 import spray.json.DefaultJsonProtocol.{StringJsonFormat, seqFormat}
 
-import scala.collection.concurrent.TrieMap
 import scala.collection.mutable
+import scala.collection.JavaConversions._
+import scala.collection.JavaConverters._
+import scala.collection.mutable.ListBuffer
 
 class GitFlowStore(
   configStore: ConfigStore,
@@ -28,23 +27,29 @@ class GitFlowStore(
   compositorFactories: Map[String, CompositorFactory],
   controllerFactories: Map[String, ControllerFactory],
   extBuiltIn: Option[BuiltIn] = None
-) extends FlowStore with ConfigChangeListener with Logging {
+) extends FlowStore with ConfigChangeListener with ConfigChecker with Logging {
+  import GitFlowStore._
+  import ZookeeperConfigStore._
 
+  // flowName -> FlowDef
   private var flowDefMap: Map[String, FlowDef] = Map.empty
   // flowName -> FlowConf
-  private val flowConfCache: TrieMap[String, FlowConf] = TrieMap.empty
-  private val flowCache: TrieMap[String, Flow] = TrieMap.empty
+  private var flowConfCache: Map[String, FlowConf] = Map.empty
+  // flowName -> Flow
+  private var flowCache: Map[String, Flow] = Map.empty
   // flowName -> Controller
-  private val controllerCache: TrieMap[String, ExperimentController] = TrieMap.empty
+  private var controllerCache: Map[String, Seq[ExperimentController]] = Map.empty
   private val builtIn: AtomicReference[BuiltIn] = new AtomicReference[BuiltIn]()
   private val resourceStore: AtomicReference[ResourceStore] = new AtomicReference[ResourceStore]()
+  private var flowGraph = FlowGraph.newBuilder(flowCache.values.toSeq).build()
 
-  configStore.register(this)
+  configStore.registerListener(this)
+  configStore.registerChecker(this)
   load(reloadFile = true)
 
   override implicit def getBuiltIn: BuiltIn = builtIn.get()
 
-  def getResource(namespace: String)(path: String): Array[Byte] = resourceStore.get().getResource(namespace)(path)
+  def getResource(namespace: String)(path: String): Array[Byte] = resourceStore.get().get(namespace)(path)
 
   implicit def buildCompositor(flow: String, definition: CompositorDef): Compositor = {
     val factoryName = definition.getFactory
@@ -59,9 +64,11 @@ class GitFlowStore(
 
   override def getFlow(flow: String): Flow = flowCache(flow)
 
-  override def getController(flow: String): Option[ExperimentController] = controllerCache.get(flow)
+  override def getController(flow: String): Seq[ExperimentController] = controllerCache.getOrElse(flow, Nil)
 
   private def getFlowConf(flow: String): FlowConf = flowConfCache.getOrElse(flow, FlowConf())
+
+  override def getFlowGraph: FlowGraph = flowGraph
 
   override def onConfUpdate(): Unit = {
     load(reloadFile = false)
@@ -104,10 +111,11 @@ class GitFlowStore(
   }
 
   private def buildFlow(): Unit = {
+    val builder = Map.newBuilder[String, Flow]
     for ((name, flowDef) <- flowDefMap) {
       try {
         val newFlow = Flow.apply(flowDef, getFlowConf(name))
-        flowCache.update(name, newFlow)
+        builder += (name -> newFlow)
         info(("msg", "build flow"), ("name", name))
       } catch {
         case cause: Throwable =>
@@ -116,66 +124,53 @@ class GitFlowStore(
       }
     }
 
-    for (removed <- flowCache.keySet -- flowDefMap.keySet) {
-      flowCache.remove(removed)
-      info(("msg", "remove flow"), ("name", removed))
-    }
+    flowCache = builder.result
+    flowGraph = FlowGraph.newBuilder(flowCache.values.toSeq).build()
   }
 
   private def loadConf(): Unit = {
-    val logMap = configStore.getLogConfList.flatMap ({ conf =>
-      val parsed = conf.parseLogConf()
-      parsed.assigns.map(assign => (assign.flow -> conf)) ++ Seq(parsed.flow -> conf)
-    }).groupBy(_._1).mapValues(_.map(_._2).distinct)
+    var builder = Map.newBuilder[String, FlowConf]
+    val logConf = configStore.getConfList(LOG_TYPE)
+    val subscribeMap= configStore.getConfList(SUBSCRIPTION_TYPE).groupBy(_.getString("publisher"))
+    val experimentMap = configStore.getConfList(EXPERIMENT_TYPE).groupBy(_.getString("flow"))
+    val callbackMap = configStore.getConfList(CALLBACK_TYPE).groupBy(_.getString("flow.register"))
 
-    val subscribeMap= configStore.getSubscriptionConfList.groupBy(_.getString("publisher"))
-    val experimentMap = configStore.getExperimentConfList.groupBy(_.getString("flow"))
-
-    val updatedKeys = (logMap.keys ++ subscribeMap.keys ++ experimentMap.keys).toSet
-    val oldKeys = flowConfCache.keySet
-    for (name <- updatedKeys) {
-      flowConfCache.update(name,
-        FlowConf(logMap.getOrElse(name, Nil),
+    for (name <- flowDefMap.keys) {
+      builder += (
+        name -> FlowConf(logConf,
           subscribeMap.getOrElse(name, Nil),
-          experimentMap.getOrElse(name, Nil)
-        )
-      )
+          experimentMap.getOrElse(name, Nil),
+          callbackMap.getOrElse(name, Nil)
+        ))
       info((s"msg", "load flow conf"), ("flow", name))
     }
 
-    for (name <- oldKeys -- updatedKeys) {
-      flowConfCache.remove(name)
-      info((s"msg", "remove flow conf"), ("flow", name))
-    }
+    flowConfCache = builder.result()
   }
 
   private def loadController(): Unit = {
-    val oldKeys = controllerCache.keySet
-    configStore.getExperimentConfList.foreach({ conf =>
+    val result = mutable.Map[String, List[ExperimentController]]()
+    configStore.getConfList(EXPERIMENT_TYPE).foreach({ conf =>
       val flow = conf.getString("flow")
       val catalog = conf.getString("catalog")
       val enabled = conf.getBoolean("enabled")
       if (enabled) {
-        controllerCache.update(flow, controllerFactories(catalog).create(conf)(getBuiltIn))
+        val controller = controllerFactories(catalog).create(conf)(getBuiltIn)
+        result += (flow -> (controller :: result.getOrElse(flow, Nil)))
         info((s"msg", "load controller"), ("flow", flow), ("catalog", catalog))
-      } else {
-        controllerCache.remove(flow)
-        info((s"msg", "turn off controller"), ("flow", flow), ("catalog", catalog))
       }
     })
-
-    val newKeys = controllerCache.keySet
-    for (removed <- oldKeys -- newKeys) {
-      controllerCache.remove(removed)
-      info((s"msg", "remove controller"), ("flow", removed))
-    }
+    controllerCache = result.toMap
   }
 
   private def loadBuiltin(url: String = ""): Unit = {
     val newValue = if (extBuiltIn.isDefined) {
-      new LocalJythonBuiltInV2(fileStore, url).mergeFrom(extBuiltIn.get).mergeFrom(DefaultBuiltIn.defaultBuiltin)
+      new LocalJythonBuiltInV2(fileStore, url)
+        .mergeFrom(extBuiltIn.get)
+        .mergeFrom(DefaultBuiltIn.defaultBuiltin)
     } else {
-      new LocalJythonBuiltInV2(fileStore, url).mergeFrom(DefaultBuiltIn.defaultBuiltin)
+      new LocalJythonBuiltInV2(fileStore, url)
+        .mergeFrom(DefaultBuiltIn.defaultBuiltin)
     }
 
     builtIn.set(newValue)
@@ -183,6 +178,35 @@ class GitFlowStore(
 
   private def loadResource(url: String): Unit = {
     resourceStore.set(new ResourceStore(fileStore, url))
+  }
+
+  private def checkExpression(expressions: Map[String, Seq[String]]): Boolean = {
+    for ((flowName, exprs) <- expressions) {
+      val flow = getFlow(flowName)
+      val flowVariables = flow.variables.keySet ++ flow.arguments.keySet.map("@" + _) ++ "@event_id"
+      val refs = exprs.flatMap(Expression(_).references.map(_.name))
+      val inValid = refs.find(!flowVariables.contains(_))
+      assert(inValid.isEmpty, s"variable ${inValid.get} does not exist in flow ${flow.name}")
+    }
+    true
+  }
+
+  override def check(name: String, confType: String, conf: Config): Boolean = {
+    checkConfName(name, conf)
+    confType match {
+      case LOG_TYPE =>
+        // check flow tags
+        checkLogConf(conf)
+        checkExpression(conf.parseLogConf().expressions)
+      case SUBSCRIPTION_TYPE =>
+        checkExpression(conf.parseSubscribe().expressions)
+      case CALLBACK_TYPE =>
+        checkExpression(conf.parseCallbackConf().expressions)
+      case EXPERIMENT_TYPE =>
+        // check experiment traffic and priority
+        checkExperimentConf(conf, configStore.getConfList(confType))
+        checkExpression(conf.parseABTestConf().expressions)
+    }
   }
 
   override def api: Route = {
@@ -193,13 +217,13 @@ class GitFlowStore(
     concat(
       get {
         path("list") {
-          complete(flowCache.keys.toSeq)
+          complete(flowCache.keys.toSeq.sorted)
         }
       },
       get {
         path("graph") {
           complete(
-            new FlowGraphBuilder(flowCache.values.toSeq).build().toJson.parseJson
+            getFlowGraph.toJson.parseJson
           )
         }
       },
@@ -213,50 +237,21 @@ class GitFlowStore(
       post {
         path("reload") {
           entity(as[String]) { url: String =>
-            load(reloadFile = true, url)
-            complete(StatusCodes.OK)
+            Utils.run {
+              load(reloadFile = true, url)
+              complete(StatusCodes.OK)
+            }
           }
         }
       }
     )
   }
 
+
+
 }
 
 object GitFlowStore {
-
-  class ResourceStore(fileStore: FileStore, url: String = "") extends Logging {
-    var resources: Map[String, Array[Byte]] = Map.empty
-    private val (prefix, files) = fileStore.listFiles(url)
-
-    loadResources()
-
-    def loadResources(): Unit = {
-      resources = files.filterNot(
-        f => f.getAbsolutePath.endsWith(".flow") || f.getAbsolutePath.endsWith(".py")
-      ).map { file =>
-        info(("msg", "load resource"), ("name", file.getName), ("absolutePath", file.getAbsolutePath))
-        file.getAbsolutePath -> FileUtils.readFileToByteArray(file)
-      }.toMap
-    }
-
-    // absolute path starts with /, relative path is resolved against from the given namespace
-    def getResource(namespace: String)(path: String): Array[Byte] = {
-      var realPath = ""
-      try {
-         realPath = if (path.startsWith("/")) {
-          Paths.get(prefix, path).toRealPath().toString
-        } else {
-          Paths.get(prefix, namespace).resolve(path).toRealPath().toString
-        }
-        resources(realPath)
-      } catch {
-        case e: Throwable =>
-          error(("msg", "get resource error"), ("namespace", namespace), ("path", path), ("realpath", realPath))
-          throw e
-      }
-    }
-  }
 
   def newBuilder(): FlowStoreBuilder = {
     new FlowStoreBuilder()
@@ -298,5 +293,23 @@ object GitFlowStore {
       this
     }
 
+  }
+
+  // distribute traffic in order of priority
+  // The smaller the priority number, the higher the priority.
+  def distributeTraffic(configs: Seq[Config]): Seq[Config] = {
+    val sorted = configs.view.filter(_.getBoolean("enabled")).sortBy(_.getInt("priority"))
+    val newConfigs = new ListBuffer[Config]()
+    sorted.foldLeft(0)((sum, config) => {
+      val original = config
+      val bucket = original.getIntList("traffic").asScala.map(_.intValue())
+      val newBucket = bucket.map(_ + sum)
+      val result = sum + bucket.last -  bucket.head
+      val newConfig = original.withValue("traffic", ConfigValueFactory.fromIterable(newBucket))
+      newConfigs.add(newConfig)
+      result
+    })
+
+    newConfigs
   }
 }

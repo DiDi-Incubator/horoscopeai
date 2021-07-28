@@ -1,0 +1,19 @@
+# /v2/topic/recursion
+
+***
+    event_id <- @event_id
+    count <- @count !! 0
+    <> {
+        ? continue = count < 2
+        => {
+            <recursion> => /v2/topic/recursion?count=count+1
+            result <- "continue"
+        }
+
+        ? finish = true
+        => {
+            <hello> => /v2/topic/hello
+            result <- hello -> result
+        }
+    }
+***

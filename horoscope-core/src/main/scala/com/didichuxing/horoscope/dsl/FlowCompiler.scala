@@ -169,12 +169,19 @@ class FlowCompiler extends FlowBaseListener with Logging {
     if (ctx.trace != null) {
       schedule.setTrace(parseEvaluate(ctx.trace))
     }
+
+    if (ctx.token != null) {
+      schedule.setToken(parseEvaluate(ctx.token))
+    }
   }
 
   override def enterInclude(ctx: FlowParser.IncludeContext): Unit = newStatement(ctx) { statement =>
     val include = statement.getIncludeStatementBuilder
     include.setScope(ctx.SNAKE().getText)
     include.setFlowName(ctx.URI().getText)
+    if (ctx.token != null) {
+      include.setToken(parseEvaluate(ctx.token))
+    }
     for (argument <- ctx.flowArgumentList().namedExpression()) {
       include.addArgument(parseNamedExpressions(argument))
     }

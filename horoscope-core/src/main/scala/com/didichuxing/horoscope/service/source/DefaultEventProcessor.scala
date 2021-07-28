@@ -87,7 +87,8 @@ class DefaultEventProcessor(sourceName: String, params: Config)
         new Array[FlowEvent](eventSize).toList
       }
     } else {
-      error(("msg", "add mailbox error backpress timeout"), ("available", backPress.availablePermits()))
+      error(("msg", "add mailbox error backpress timeout"), ("source", sourceName),
+        ("available", backPress.availablePermits()))
       if (Try(params.getBoolean("backpress.reject")).getOrElse(false)) {
         events.foreach(e => {
           rejectLog.public(("flow_event", Value(e).toJson))
@@ -126,20 +127,10 @@ class DefaultEventProcessor(sourceName: String, params: Config)
             ("duration", s"${fib.getEndTime - fib.getStartTime} ms"))
           // 打印ODS分析日志
           ctx.odsLogger.log(flowInstance)
-          //如果需要goto，发送给Scheduler
-          if (fib.hasGoto) {
-            val gotoEvent = fib.getGoto
-            if (gotoEvent.hasScheduledTimestamp && gotoEvent.getScheduledTimestamp > 0) {
-              scheduler.goto(fib.getGoto)
-              backPress.release()
-            } else {
-              //继续执行，不释放反压令牌
-              exec(gotoEvent)
-            }
-          } else {
-            //不需要goto
-            backPress.release()
-          }
+
+          //不需要goto
+          backPress.release()
+
         }
       } else {
         //warn：这里会直接丢弃，也就是可能出现mailbox里的消息未处理完成。需要重启服务后recovery重新执行。
@@ -226,19 +217,7 @@ class DefaultEventProcessor(sourceName: String, params: Config)
             // 打印ODS分析日志
             ctx.odsLogger.log(flowInstance)
             result = fib.asInstanceOf[FlowInstance]
-            if (fib.hasGoto) {
-              val gotoEvent = fib.getGoto
-              if (gotoEvent.hasScheduledTimestamp && gotoEvent.getScheduledTimestamp > 0) {
-                scheduler.goto(fib.getGoto)
-                backPress.release()
-              } else {
-                //继续执行，不释放反压令牌
-                result = putEventSync(gotoEvent)
-              }
-            } else {
-              //不需要goto
-              backPress.release()
-            }
+            backPress.release()
           }
         } else {
           backPress.release()

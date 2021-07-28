@@ -1,10 +1,13 @@
 package com.didichuxing.horoscope.util
 
+import java.util.concurrent.TimeUnit
+
 import com.didichuxing.horoscope.core.Flow
-import com.didichuxing.horoscope.core.Flow.{Choice, Evaluate, Include, Node, Schedule, Subscribe, Terminator, _}
+import com.didichuxing.horoscope.core.Flow._
 import com.didichuxing.horoscope.runtime.Value
 import com.didichuxing.horoscope.runtime.convert.ValueTypeAdapter
 import com.didichuxing.horoscope.util.FlowGraph._
+import com.google.common.cache.{CacheBuilder, CacheLoader, LoadingCache}
 import com.google.gson.{Gson, GsonBuilder}
 import org.jgrapht.EdgeFactory
 import org.jgrapht.alg.shortestpath.DijkstraShortestPath
@@ -12,89 +15,139 @@ import org.jgrapht.graph._
 
 import scala.collection.JavaConversions._
 
-class FlowGraph(vertices: Seq[FlowVertex], includes: Seq[IncludeEdge],
-  subscribes: Seq[SubScribeEdge], schedules: Seq[ScheduleEdge]) {
+class FlowGraph(vertices: Seq[FlowVertex], edges: Seq[Edge]) extends Logging {
   implicit val gson: Gson = new GsonBuilder()
     .registerTypeHierarchyAdapter(classOf[Value], new ValueTypeAdapter)
     .setPrettyPrinting()
     .serializeNulls()
     .create()
 
-  private lazy val directedGraph: DefaultDirectedGraph[String, _] = {
-    case class Edge(from: String, to: String)
+  private lazy val directedGraph: DefaultDirectedGraph[String, Edge] = {
     val graph = new DefaultDirectedGraph(new EdgeFactory[String, Edge] {
-      override def createEdge(sourceVertex: String, targetVertex: String): Edge = Edge(sourceVertex, targetVertex)
+      override def createEdge(sourceVertex: String, targetVertex: String): Edge = null
     })
     vertices.foreach(v => graph.addVertex(v.name))
-    (includes ++ subscribes ++ schedules).foreach(e => graph.addEdge(e.from, e.to))
+    edges.foreach { e =>
+      if (graph.containsVertex(e.from) && graph.containsVertex(e.to)) {
+        graph.addEdge(e.from, e.to, e)
+      }
+    }
 
     graph
   }
 
   private lazy val shortestPath = new DijkstraShortestPath(directedGraph)
 
-  def getPath(from: String, to: String): Seq[String] = shortestPath.getPath(from, to).getVertexList
+  private val pathCache: LoadingCache[(String, String), Seq[String]] = CacheBuilder.newBuilder()
+    .maximumSize(1000)
+    .concurrencyLevel(128)
+    .expireAfterAccess(2, TimeUnit.HOURS
+    ).build(
+    new CacheLoader[(String, String), Seq[String]] {
+      def load(key: (String, String)): Seq[String] = {
+        val graphPath = shortestPath.getPath(key._1, key._2)
+        if (graphPath == null) {
+          Nil
+        } else {
+          graphPath.getVertexList
+        }
+      }
+    }
+  )
+
+  def getPath(from: String, to: String): Seq[String] = try {
+    pathCache.get((from, to))
+  } catch {
+    case e: Throwable =>
+      error(s"calc path failed from flow: ${from}, to: ${to}, message: ${e.getMessage}")
+      Nil
+  }
+
+  def hasPath(from: String, to: String): Boolean = getPath(from, to).nonEmpty
 
   def toJson: String = {
     Value(
-      Map("flows" -> Value(vertices), "includes" -> Value(includes),
-        "subscribes" -> Value(subscribes), "schedules" -> Value(schedules))
+      Map("flows" -> Value(vertices),
+        "includes" -> Value(edges.filter(_.`type` == "include")),
+        "subscribes" -> Value(edges.filter(_.`type` == "subscribe")),
+        "schedules" -> Value(edges.filter(_.`type` == "schedule")),
+        "callbacks" -> Value(edges.filter(_.`type` == "callback")))
     ).toJson
   }
 }
 
-class FlowGraphBuilder(flows: Seq[Flow]) {
+object FlowGraph {
+  case class FlowVertex(name: String, args: Seq[String], experiment: Seq[String] = Nil)
 
-  def build(): FlowGraph = {
-    val vertices: Seq[FlowVertex] = flows.map(flowToVertex)
-    var includes: List[IncludeEdge] = Nil
-    var schedules: List[ScheduleEdge] = Nil
-    var subscribes: List[SubScribeEdge] = Nil
+  object FlowVertex {
+    def apply(flow: Flow): FlowVertex = {
+      val experiments = flow.flowConf.experiments.map(_.getString("name"))
+      FlowVertex(flow.name, flow.arguments.keys.toSeq, experiments)
+    }
+  }
 
-    flows.foreach { f =>
-      val terminator = f.terminator
-      val nodes = Node.search(terminator.deps) {
-        case _: Include => Nil
-        case _: Subscribe => Nil
-        case _: Schedule => Nil
-        case choice: Choice => choice.action :: choice.deps.toList
-        case block: Terminator => block.deps
-      }
+  case class Edge(from: String, to: String, scope: String, `type`: String, options: Map[String, String] = Map.empty)
 
-      nodes.foreach {
-        case include: Include => includes ::= IncludeEdge(f.name, include.flow, include.scope)
-        case subscribe: Subscribe => subscribes ::= SubScribeEdge(f.name, subscribe.flow,
-          subscribe.scope, subscribe.definition.condition,
-          subscribe.definition.target, subscribe.definition.traffic
-        )
-        case schedule: Schedule => schedules ::= ScheduleEdge(f.name, schedule.flow, schedule.scope,
-          schedule.waitTime.toString, schedule.trace.map(_.asInstanceOf[Evaluate].expression.toString()))
-        case _ => Unit
-      }
+  object Edge {
+    def apply(flow: String, include: Include): Edge = {
+      Edge(flow, include.flow, include.scope, `type` = "include")
     }
 
-    new FlowGraph(vertices, includes.distinct, subscribes.distinct, schedules.distinct)
+    def apply(flow: String, schedule: Schedule): Edge = {
+      Edge(flow, schedule.flow, schedule.scope, `type` = "schedule",
+        options = Map("waitTime" -> schedule.waitTime.toString) ++
+          schedule.trace.map(_.asInstanceOf[Evaluate].expression.toString()).map("trace" -> _)
+      )
+    }
+
+    def apply(flow: String, subscribe: Subscribe): Edge = {
+      val definition = subscribe.definition
+      Edge(flow, subscribe.flow, subscribe.scope, `type` = "subscribe",
+        options = Map("traffic" -> definition.traffic.toString()) ++
+          definition.condition.map("condition" -> _) ++
+          definition.target.map("target" -> _)
+      )
+    }
+
+    def apply(flow: String, callback: Callback): Edge = {
+      Edge(flow, callback.flow, callback.scope, `type` = "callback",
+        options = Map(
+          "timeout" -> callback.timeout.toString,
+          "token" -> callback.definition.token) ++
+          callback.timeoutFlow.map("timeoutFlow" -> _)
+      )
+    }
   }
-}
 
-object FlowGraph {
-  case class FlowVertex(name: String, args: Seq[String], experiment: Option[String])
-
-  def flowToVertex(flow: Flow): FlowVertex = {
-    FlowVertex(flow.name, flow.arguments.keys.toSeq, flow.flowConf.enabledExperiment)
+  def newBuilder(flows: Seq[Flow]): FlowGraphBuilder = {
+    new FlowGraphBuilder(flows)
   }
 
-  trait Edge {
-    def from: String
+  class FlowGraphBuilder(flows: Seq[Flow]) {
 
-    def to: String
+    def build(): FlowGraph = {
+      val vertices: Seq[FlowVertex] = flows.map(FlowVertex(_))
+      var edges: List[Edge] = Nil
+      flows.foreach { f =>
+        val terminator = f.terminator
+        val nodes = Node.search(terminator.deps) {
+          case _: Include => Nil
+          case _: Subscribe => Nil
+          case _: Schedule => Nil
+          case _: Callback => Nil
+          case choice: Choice => choice.action :: choice.deps.toList
+          case block: Terminator => block.deps
+        }
+        nodes.foreach {
+          case include: Include => edges ::= Edge(f.name, include)
+          case subscribe: Subscribe => edges ::= Edge(f.name, subscribe)
+          case schedule: Schedule => edges ::= Edge(f.name, schedule)
+          case callback: Callback => edges ::= Edge(f.name, callback)
+          case _ => Unit
+        }
+      }
+
+      new FlowGraph(vertices, edges.distinct)
+    }
   }
-
-  case class IncludeEdge(from: String, to: String, scope: String) extends Edge
-
-  case class SubScribeEdge(from: String, to: String, scope: String,
-    condition: Option[String], target: Option[String], traffic: Bucket) extends Edge
-
-  case class ScheduleEdge(from: String, to: String, scope: String,
-    waitTime: String,  traceId: Option[String]) extends Edge
 }

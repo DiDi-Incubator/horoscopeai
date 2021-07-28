@@ -33,14 +33,15 @@ message FlowEvent {
     message Choice {
         repeated string choice = 1;
     }
+
     message Parent {
         required string event_id = 1;
         required string trace_id = 2;
         required string flow_name = 3;
         repeated string scope = 4;
-        repeated TraceVariable variable = 5; // variable context
-        map<string, Choice> choice = 6; // choice context
-        map<string, FlowValue> experiment = 7; // experiment context
+         repeated TraceVariable variable = 5;     //  6.2, deprecated
+         map<string, Choice> choice = 6;          //  6.2, deprecated
+         map<string, FlowValue> experiment = 7;   //  6.2, deprecated
     }
 
     required string event_id = 1;
@@ -49,17 +50,10 @@ message FlowEvent {
     optional int64 scheduled_timestamp = 4; // unix timestamp
     map<string, TraceVariable> argument = 6; // TODO(wenxiang): no need to use TraceVariable any more
     optional Parent parent = 8;
-
-    optional TokenStatus token = 5; // deprecated
-    optional string choice = 7; // deprecated
-
-    // deprecated
-    message TokenStatus {
-        required string name = 1;
-        required string value = 2;
-        optional string owner = 3;  // trace_id
-        optional ValueReference reference = 4;
-    }
+    optional string token = 9;               // callback token
+    repeated LogTrigger trigger = 10;        // topic trigger
+    optional ForwardContext forward = 11;
+    optional ExperimentContext experiment = 12;
 }
 
 // TODO(wenxiang): move inside TraceVariable
@@ -76,23 +70,6 @@ message ValueReference {
 }
 
 message FlowInstance {
-    message Assign {
-        required string name = 1;
-        required FlowValue value = 2;
-
-        optional string choice = 3;
-        repeated ValueReference dependency = 4;
-        optional FlowValue error = 5;
-
-        optional string compositor = 101;
-        map<string, ValueReference> composite_argument = 102;
-    }
-
-    message Choose {
-        required string choice = 1;
-        optional string parent = 2;
-        repeated ValueReference predicate = 3;
-    }
 
     message Experiment {
         optional string name = 1;
@@ -130,18 +107,27 @@ message FlowInstance {
         repeated string context_choice = 13;
     }
 
+    message Topic {
+        required string log_id = 1;
+        required string topic_name = 2;
+        optional string trace_id = 3;
+        optional int64 timestamp = 4;
+        map<string, FlowValue> field = 5;
+    }
+
     optional string flow_id = 1;
     required FlowEvent event = 2; // TODO(wenxiang): should extract necessary fields out
     optional int64 start_time = 6;
     optional int64 end_time = 7;
 
-    repeated Assign assign = 3; // deprecated
-    repeated Choose choose = 4; // deprecated
-    optional FlowEvent goto = 5; // deprecated
-
     repeated Procedure procedure = 101;
     repeated TraceVariable update = 102;
     repeated FlowEvent schedule = 103;
+    repeated string delete = 104;
+
+    repeated Topic topic = 1000;
+    repeated TokenContext token = 1001;
+    repeated BackwardContext backward = 1002;
 }
 
 message TraceVariable {
@@ -149,6 +135,52 @@ message TraceVariable {
     optional ValueReference reference = 2;
 }
 
+message Choose {
+    repeated string choice = 1;
+}
+
 message TraceContext {
     repeated TraceVariable contexts = 1;
+}
+
+message ForwardContext {
+    required string topic_name = 1;           // topic
+    map<string, FlowValue> variable = 2;      // name -> variable
+    map<string, Choose> choice = 3;           // name -> choice
+    map<string, FlowValue> tag = 4;           // name -> flow
+}
+
+message BackwardContext {
+    required string log_id = 1;              // &xxx
+    required string topic_name = 2;
+    repeated string dependency_flow = 3;
+    map<string, FlowValue> variable = 4;     // name -> variable
+    map<string, Choose> choice = 5;          // name -> choice
+    map<string, FlowValue> tag = 6;          // name -> flow
+    optional string event_id = 7;            // key flow event_id
+}
+
+message LogTrigger {
+    required string log_id = 1;
+    required string topic_name = 2;
+    optional string event_id = 3;           // key flow event_id
+}
+
+message ExperimentContext {
+    message Alternative {
+        optional string original = 1;        // original flow
+        optional string replacement = 2;     // replacement flow
+        map<string, FlowValue> argument = 3;
+    }
+    optional string name = 1;
+    optional string group = 2;
+    repeated Alternative plan = 3;
+    map<string, FlowValue> dependency = 4;
+}
+
+message TokenContext {
+    required string token = 1;               // #xxx
+    map<string, FlowValue> argument = 2;
+    optional LogTrigger trigger = 3;         // trigger info of backward context
+    optional ForwardContext forward = 4;     // forward context
 }

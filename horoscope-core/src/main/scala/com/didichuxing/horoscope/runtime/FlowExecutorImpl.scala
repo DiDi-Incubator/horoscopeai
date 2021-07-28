@@ -11,7 +11,7 @@ import java.util.concurrent.{Callable, TimeUnit}
 import akka.actor.SupervisorStrategy.Restart
 import akka.actor.{Actor, ActorRef, ActorSystem, OneForOneStrategy, PoisonPill, Props, SupervisorStrategy}
 import com.didichuxing.horoscope.core.FlowRuntimeMessage._
-import com.didichuxing.horoscope.runtime.interpreter.{CompatibleInterpreter, FlowInterpreter}
+import com.didichuxing.horoscope.runtime.interpreter.FlowInterpreter
 import com.didichuxing.horoscope.util.Logging
 import com.google.common.cache.{Cache, CacheBuilder}
 import com.typesafe.config.Config
@@ -44,7 +44,7 @@ class FlowExecutorImpl(
     instance.future
   }
 
-  private val contextCache: Cache[String, Map[String, TraceVariable]] = CacheBuilder.newBuilder()
+  private[runtime] val contextCache: Cache[String, Map[String, TraceVariable]] = CacheBuilder.newBuilder()
     .maximumSize(Try(config.getLong("horoscope.flow-executor.context-cache.maximum-size")).getOrElse(100000))
     .concurrencyLevel(128)
     .expireAfterAccess(
@@ -96,16 +96,9 @@ class FlowExecutorImpl(
               def call(): Map[String, TraceVariable] = Map.empty
             })
 
-            val flow = getFlowByName(event.getFlowName)
-            val worker = if (flow.isCompatible) {
-              context.actorOf(
-                Props(classOf[CompatibleInterpreter], flow, event, env, manager, traceContext), event.getEventId
-              )
-            } else {
-              context.actorOf(
-                Props(classOf[FlowInterpreter], env, manager, event, traceContext, config), event.getEventId
-              )
-            }
+            val worker = context.actorOf(
+              Props(classOf[FlowInterpreter], env, manager, event, traceContext, config), event.getEventId
+            )
 
             context.watchWith(
               worker,

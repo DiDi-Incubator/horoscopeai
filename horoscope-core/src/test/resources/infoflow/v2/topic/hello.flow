@@ -1,0 +1,5 @@
+# /v2/topic/hello
+
+***
+    result <- "hello world!"
+***

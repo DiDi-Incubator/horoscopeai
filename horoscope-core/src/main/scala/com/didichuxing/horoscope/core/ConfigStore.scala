@@ -5,23 +5,21 @@ import com.typesafe.config.Config
 
 trait ConfigStore {
 
-  def getLogConf(name: String): Config
+  def getConf(name: String, confType: String): Config
 
-  def getExperimentConf(name: String): Config
+  def getConfList(confType: String): List[Config]
 
-  def getSubscriptionConf(name: String): Config
+  def registerListener(listener: ConfigChangeListener): Unit
 
-  def getLogConfList: List[Config]
-
-  def getExperimentConfList: List[Config]
-
-  def getSubscriptionConfList: List[Config]
-
-  def register(listener: ConfigChangeListener): Unit
+  def registerChecker(checker: ConfigChecker): Unit
 
   def api: Route = _.reject()
 }
 
 trait ConfigChangeListener {
   def onConfUpdate(): Unit
+}
+
+trait ConfigChecker {
+  def check(name: String, configType: String, conf: Config): Boolean
 }

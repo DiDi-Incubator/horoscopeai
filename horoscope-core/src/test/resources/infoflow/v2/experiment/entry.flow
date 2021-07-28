@@ -1,0 +1,10 @@
+# /v2/experiment/entry
+*log="enabled"
+***
+    input <~ @input
+    tag <- @tag !! ""
+    result <- "this is " + tag
+
+    <include> => /v2/experiment/hello
+    <schedule> + "1 minutes" => /v2/experiment/hello
+***

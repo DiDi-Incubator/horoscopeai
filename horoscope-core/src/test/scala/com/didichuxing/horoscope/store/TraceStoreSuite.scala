@@ -6,8 +6,6 @@
 
 package com.didichuxing.horoscope.store
 
-import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowEvent.TokenStatus
-import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowInstance.Assign
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.{FlowEvent, FlowInstance, FlowValue}
 import com.didichuxing.horoscope.service.storage.HBaseTraceStore
 import com.didichuxing.horoscope.util.Utils._
@@ -45,13 +43,10 @@ class TraceStoreSuite extends FunSuite with BeforeAndAfter with Logging {
       .setTraceId(traceId)
       .setFlowName(gotoFlowName)
       .setScheduledTimestamp(System.currentTimeMillis())
-      .setToken(TokenStatus.newBuilder().setName("linkId").setValue("link0001").setOwner(""))
       .build()
     val instance = FlowInstance.newBuilder()
       .setFlowId("")
       .setEvent(event)
-      .setGoto(gotoEvent)
-      .addAssign(Assign.newBuilder().setName("$test").setValue(FlowValue.newBuilder().setText("hello2")))
     //2. commit event10000
     val flowInstance = traceStore.commitEvent(source, instance)
     info(("commit event 1", flowInstance.getEvent.getEventId))
@@ -59,16 +54,11 @@ class TraceStoreSuite extends FunSuite with BeforeAndAfter with Logging {
     //3. commit event10001
     val instance2 = FlowInstance.newBuilder()
       .setFlowId("")
-      .setEvent(flowInstance.getGoto)
-      .setGoto(gotoEvent)
-      .addAssign(Assign.newBuilder().setName("$test").setValue(FlowValue.newBuilder().setText("hello2")))
     val flowInstance2 = traceStore.commitEvent(schStoreCol(hconf), instance2)
     info(("commit event 2", flowInstance2.getEvent.getEventId))
     //info(("scheduler event list 2", traceStore.getEventsBySource(SCH_STORE_COL, 0, 999999)))
     val instance3 = FlowInstance.newBuilder()
       .setFlowId("")
-      .setEvent(flowInstance2.getGoto)
-      .addAssign(Assign.newBuilder().setName("$test").setValue(FlowValue.newBuilder().setText("hello2")))
     val flowInstance3 = traceStore.commitEvent(schStoreCol(hconf), instance3)
     info(("commit event 3", flowInstance3.getEvent.getEventId))
   }

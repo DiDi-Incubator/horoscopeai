@@ -8,13 +8,16 @@ package com.didichuxing.horoscope.runtime
 
 import java.nio.charset.Charset
 import java.time.LocalDateTime
+import java.util.concurrent.Callable
 
 import akka.actor.ActorSystem
 import com.didichuxing.horoscope.core.FlowDslMessage.CompositorDef
 import com.didichuxing.horoscope.core.FlowRuntimeMessage._
 import com.didichuxing.horoscope.core.{Compositor, Flow}
-import com.didichuxing.horoscope.dsl.{FlowCompiler}
-import com.didichuxing.horoscope.runtime.experiment.{ExperimentController}
+import com.didichuxing.horoscope.dsl.FlowCompiler
+import com.didichuxing.horoscope.runtime.experiment.ExperimentController
+import com.didichuxing.horoscope.runtime.expression.BuiltIn
+import com.didichuxing.horoscope.util.FlowGraph
 import com.google.common.io.Resources
 import com.typesafe.config.ConfigFactory
 
@@ -54,7 +57,7 @@ class ExecutorSuite extends ExecutorSuiteHelper {
       compositor(definition.getFactory, definition.getContent)
     }
 
-    override def getController(flow: String): Option[ExperimentController] = None
+    override def getController(flow: String): Seq[ExperimentController] = Nil
 
     override def getFlowByName(name: String): Flow = {
       flows.getOrElseUpdate(name, {
@@ -72,6 +75,10 @@ class ExecutorSuite extends ExecutorSuiteHelper {
     def getTraceContext(traceId: String, keys: Array[String]): Future[Map[String, TraceVariableOrBuilder]] = {
       Future.successful(contexts.getOrElse(traceId, Map.empty))
     }
+
+    override def getBuiltIn(): BuiltIn = null
+
+    override def getFlowGraph(): FlowGraph = null
   }
 
   var env: MockEnv = _
@@ -80,7 +87,7 @@ class ExecutorSuite extends ExecutorSuiteHelper {
     env = new MockEnv()
     executor = new FlowExecutorImpl(ConfigFactory.parseString(
       """
-        |horoscope.flow-executor.log.detailed = true
+        |horoscope.flow-executor.detailed-log.enabled = true
         |""".stripMargin), ActorSystem("flow-test"), env)
     executor.start()
   }
@@ -91,13 +98,6 @@ class ExecutorSuite extends ExecutorSuiteHelper {
     executor = null
   }
 
-  test("hello") {
-    val event = newEvent("0", "a")("hello")
-    whenReady(executor.execute(event)) { instance =>
-      instance.assigns("result").value.as[String] shouldBe "hello world!"
-    }
-  }
-
   test("v2/hello") {
     val event = newEvent("0", "a")("v2/hello")
     whenReady(executor.execute(event)) { instance =>
@@ -105,29 +105,6 @@ class ExecutorSuite extends ExecutorSuiteHelper {
       instance("procedure[0].flow_name").as[String] shouldBe "/v2/hello"
       instance("procedure[0].assign.result").as[String] shouldBe "hello world!"
       instance("procedure[0].assign.event_id").as[String] shouldBe "0"
-    }
-  }
-
-  test("composite") {
-    val read = env.compositor("restful", "read")
-    (read.composite _).expects(where { args: ValueDict =>
-      args.visit("key").as[String] == "a"
-    }).returns(Future.successful(Value(1)))
-    (read.composite _).expects(where { args: ValueDict =>
-      args.visit("key").as[String] == "b"
-    }).returns(Future.successful(Value(2)))
-
-    val write = env.compositor("restful", "write")
-    (write.composite _).expects(where { args: ValueDict =>
-      args.visit("output").as[Int] == 3
-    }).returns(Future.successful(Value("success")))
-
-    val event = newEvent("0", "a")("composite")
-    whenReady(executor.execute(event)) { instance =>
-      instance.assigns.keys should contain("a")
-      instance.assigns.keys should contain("b")
-      instance.assigns.keys should not contain ("c")
-      instance.assigns("write").value.as[String] shouldBe "success"
     }
   }
 
@@ -157,22 +134,6 @@ class ExecutorSuite extends ExecutorSuiteHelper {
     }
   }
 
-  test("batch") {
-    def concat(args: ValueDict): String = {
-      args.visit("head").as[String] + args.visit("middle").as[String] + args.visit("last").toString
-    }
-
-    val compositor = env.compositor("concat", "")
-    (compositor.composite _).expects(where { args: ValueDict => concat(args) == "a-1" }).returns(Future(Value("a-1")))
-    (compositor.composite _).expects(where { args: ValueDict => concat(args) == "b-2" }).returns(Future(Value("b-2")))
-
-    val event = newEvent("0", "a")("batch")
-    whenReady(executor.execute(event)) { instance =>
-      instance.assigns("result").value.as[Set[String]] shouldBe Set("a-1", "b-2")
-    }
-  }
-
-
   test("v2/batch") {
     def concat(args: ValueDict): String = {
       args.visit("head").as[String] + args.visit("middle").as[String] + args.visit("last").toString
@@ -188,46 +149,6 @@ class ExecutorSuite extends ExecutorSuiteHelper {
       instance("procedure[0].composite.result.compositor").as[String] shouldBe "Concat"
       instance("procedure[0].composite.result.batch_size").as[Int] shouldBe 2
       instance("procedure[0].assign.result").as[Map[String, String]] shouldBe Map("x" -> "a-1", "y" -> "b-2")
-    }
-  }
-
-  test("branch") {
-    def run(level: Int): Future[FlowInstance] = {
-      val event = newEvent(level.toString, "a")("branch", "level" -> Value(level))
-      executor.execute(event)
-    }
-
-    whenReady(run(1)) { instance =>
-      instance.assigns("threshold").getChoice shouldBe "vip"
-      instance.assigns("result").value.as[Double] shouldBe 0.5
-      instance.chooses.keySet shouldBe Set("vip")
-    }
-
-    whenReady(run(2)) { instance =>
-      instance.assigns("threshold").getChoice shouldBe "high"
-      instance.assigns("result").value.as[Double] shouldBe 0.75
-      instance.chooses.keySet shouldBe Set("normal", "high")
-    }
-
-    whenReady(run(3)) { instance =>
-      instance.assigns("threshold").getChoice shouldBe "middle"
-      instance.assigns("result").value.as[Double] shouldBe 0.75
-      instance.chooses.keySet shouldBe Set("normal", "middle")
-    }
-
-    whenReady(run(4)) { instance =>
-      instance.assigns("threshold").getChoice shouldBe "low"
-      instance.assigns("result").value.as[Double] shouldBe 0.9
-      instance.chooses.keySet shouldBe Set("normal", "low")
-
-      instance.chooses("low").getPredicateList.map(_.getName).toSet shouldBe Set("middle", "high", "low")
-      instance.assigns("low").getDependencyList.map(_.getName).toSet shouldBe Set("@level")
-    }
-
-    whenReady(run(5)) { instance =>
-      instance.assigns.keySet should not contain "threshold"
-      instance.assigns("result").value shouldBe NULL
-      instance.chooses.keySet shouldBe Set("normal")
     }
   }
 
@@ -268,60 +189,6 @@ class ExecutorSuite extends ExecutorSuiteHelper {
       instance("procedure[0].choice").as[Seq[String]] shouldBe Seq("normal")
       instance("procedure[0].assign.result") shouldBe NULL
       instance(""" "threshold" not in procedure[0].assign """).as[Boolean] shouldBe true
-    }
-  }
-
-  test("trace") {
-    env.updateContext("a", "0", "$delta", Value(1))
-
-    var seq: Int = 0
-
-    def run(flag: Boolean): Future[FlowInstance] = {
-      (env.compositor("wait", "").composite _).expects(
-        where { args: ValueDict => args.children.isEmpty }
-      ).onCall({ _: ValueDict =>
-        Future {
-          Thread.sleep(200)
-          Value(LocalDateTime.now().toString)
-        }
-      })
-
-      seq += 1
-      val event = newEvent(seq.toString, "a")("trace", "flag" -> Value(flag))
-      executor.execute(event)
-    }
-
-    val one = run(false)
-    val two = run(true)
-    val three = run(false)
-    val four = run(true)
-
-    whenReady(one) { instance =>
-      instance.assigns("$count").value.as[Int] shouldBe 0
-      instance.assigns("result").value.as[Int] shouldBe 0
-      instance.chooses.keySet should contain only "init"
-    }
-
-    whenReady(two) { instance =>
-      instance.assigns("$count").value.as[Int] shouldBe 1
-      instance.assigns("$count").getDependency(0).getEventId shouldBe "1"
-      instance.assigns("$count").getDependency(0).getName shouldBe "$count"
-      instance.assigns("result").value.as[Int] shouldBe 1
-      instance.assigns("result").getDependency(0).getName shouldBe "$count"
-      instance.assigns("result").getDependency(0).getEventId shouldBe "2"
-      instance.chooses.keySet should contain only "add"
-    }
-
-    whenReady(three) { instance =>
-      instance.assigns("result").value.as[Int] shouldBe 1
-      instance.assigns("result").getDependency(0).getName shouldBe "$count"
-      instance.assigns("result").getDependency(0).getEventId shouldBe "2"
-      instance.chooses shouldBe empty
-    }
-
-    whenReady(four) { instance =>
-      instance.assigns("result").value.as[Int] shouldBe 2
-      instance.chooses.keySet should contain only "add"
     }
   }
 
@@ -379,22 +246,6 @@ class ExecutorSuite extends ExecutorSuiteHelper {
     }
   }
 
-  test("error") {
-    val action = env.compositor("action", "")
-    (action.composite _).expects(
-      where { _: ValueDict => true }
-    ).returns(
-      Future.failed(new NotImplementedError("hehe"))
-    )
-
-    val event = newEvent("0", "a")("error")
-    whenReady(executor.execute(event)) { instance =>
-      instance.assigns("action").value shouldBe NULL
-      instance.assigns("error").value.visit("class").as[String] shouldBe "NotImplementedError"
-      instance.assigns("error").value.visit("message").as[String] shouldBe "hehe"
-    }
-  }
-
   test("v2/failover") {
     val input = env.compositor("input", "")
     (input.composite _).expects(*).returns(
@@ -414,26 +265,6 @@ class ExecutorSuite extends ExecutorSuiteHelper {
       instance("procedure[0].fault.input.catalog").as[String] shouldBe "NotImplementedError"
       instance("procedure[0].fault.input.message").as[String] shouldBe "hehe"
       instance("procedure[0].fault.action.catalog").as[String] shouldBe "IllegalArgumentException"
-    }
-  }
-
-  test("undefined-arg") {
-    def run(level: Int): Future[FlowInstance] = {
-      val event = newEvent(level.toString, "a")("undefined-arg", "level" -> Value(level))
-      executor.execute(event)
-    }
-
-    whenReady(run(1)) { instance =>
-      instance.assigns("arg").value shouldBe NULL
-      instance.chooses.keySet shouldBe Set("is_null")
-    }
-  }
-
-  test("goto") {
-    val event = newEvent("1", "a")("goto", "arg" -> Value("argument"))
-    whenReady(executor.execute(event)) { instance =>
-      instance.assigns("need_infer").value.as[Boolean] shouldBe (true)
-      instance.hasGoto shouldBe true
     }
   }
 
@@ -483,11 +314,22 @@ class ExecutorSuite extends ExecutorSuiteHelper {
     val ten = run(Some(5))
 
     whenReady(one) { instance =>
+      // scalastyle:off
+      println(instance.toJson)
       instance("procedure[0].assign").as[Map[String, Int]] shouldBe Map("result" -> 1)
       instance.getUpdateList.isEmpty shouldBe true
     }
 
     whenReady(two) { instance =>
+      // scalastyle:off
+      val traceContext = executor.contextCache.get("a", new Callable[Map[String, TraceVariable]] {
+        def call(): Map[String, TraceVariable] = Map.empty
+      })
+
+      println(traceContext)
+
+
+      println(instance.toJson)
       instance("procedure[0].assign").as[Map[String, Int]] shouldBe Map("result" -> 2)
       instance.getUpdateList.isEmpty shouldBe true
     }

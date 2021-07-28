@@ -149,27 +149,23 @@ class HBaseTraceStore(executionContext: ExecutionContext = null) extends Abstrac
       val mutations = new RowMutations(rowKeyBytes)
       val sourceCF = getSourceColumnFamily(source)
       val sourceCol = getSourceCol(source, event.getEventId)
-      //1. store scheduler
-      val schRet = schedulerStore(source, instance)
-      if (schRet.put.isDefined) {
-        mutations.add(schRet.put.get)
-      }
-      //2. store to trace context
+
+      //1. store to trace context
       val cxtPut = contextStore(instance)
       if (cxtPut.isDefined) {
         mutations.add(cxtPut.get)
       }
-      //3. remove mailbox
-      if (schRet.isDel) {
-        val del = new Delete(rowKeyBytes)
-        del.addColumns(sourceCF, sourceCol)
-        mutations.add(del)
-      }
-      //4. atomic update row
+
+      //2. remove mailbox
+      val del = new Delete(rowKeyBytes)
+      del.addColumns(sourceCF, sourceCol)
+      mutations.add(del)
+
+      //3. atomic update row
       if (traceContextTable.checkAndMutate(rowKeyBytes, sourceCF, sourceCol, CompareOp.EQUAL,
         event.toByteArray, mutations)) {
         //成功
-        //5. multi scheduler
+        //4. multi scheduler
         multiScheduler(source, instance)
         instance.build()
       } else {
@@ -198,77 +194,6 @@ class HBaseTraceStore(executionContext: ExecutionContext = null) extends Abstrac
       if (tryEvent.isSuccess) Some(tryEvent.get) else None
     } else {
       None
-    }
-  }
-
-  case class SchedulerStoreRet(put: Option[Put], isDel: Boolean)
-
-  /**
-   * # 加锁操作。假如多个trace上的flow试图同时获得一个token，最终只有一个goto语句获得token。
-   * 目标Flow在执行的时候，可以通过@token变量来确定是否拿到token。当目标Flow执行结束且没有继续获取token时，token自动释放
-   * + 等待操作，目标Flow会在约定时间后执行。这里有一个例外，假如没有获得token，目标Flow会立即执行
-   */
-  private def schedulerStore(source: String, instance: FlowInstance.Builder): SchedulerStoreRet = {
-    val event = instance.getEvent
-    val traceId = event.getTraceId
-    if (instance.hasGoto) {
-      val rowKey = getRowKey(traceId)
-      val rowKeyBytes = Bytes.toBytes(rowKey)
-      val put = new Put(rowKeyBytes)
-      debug(("msg", "commit goto event"))
-      val gotoEvent = instance.getGotoBuilder
-      if (!gotoEvent.hasEventId) {
-        gotoEvent.setEventId(getEventId())
-      }
-      gotoEvent.setTraceId(traceId)
-      if (gotoEvent.hasToken) { //goto有token，需要抢token
-        val token = gotoEvent.getTokenBuilder
-        val lockInfo = token.getValue
-        debug(("msg", "commit has token"), ("token", lockInfo))
-        val owner = acquireLock(traceId, lockInfo)
-        debug(("msg", "acquire lock"), ("owner", owner))
-        if (!owner.equals(traceId)) {
-          //假如没有获得token，目标Flow会立即执行
-          //update scheduler timestamp
-          gotoEvent.setScheduledTimestamp(0)
-        }
-        //update to token owner
-        token.setOwner(owner).build()
-        gotoEvent.setToken(token)
-      } else { //goto不需要token，释放event的token
-        //释放event token
-        releaseEventToken(event)
-      }
-      instance.setGoto(gotoEvent)
-      if (gotoEvent.hasScheduledTimestamp && gotoEvent.getScheduledTimestamp > 0) {
-        val schedulerCol = getSourceCol(schStoreCol(config), gotoEvent.getEventId)
-        put.addColumn(schedulerCF.getName, schedulerCol, gotoEvent.build().toByteArray)
-        SchedulerStoreRet(Some(put), true)
-      } else {
-        val sourceCf = getSourceColumnFamily(source)
-        val sourceCol = getSourceCol(source, gotoEvent.getEventId)
-        put.addColumn(sourceCf, sourceCol, gotoEvent.build().toByteArray)
-        SchedulerStoreRet(Some(put), true)
-      }
-    } else {
-      //当目标Flow执行结束且没有继续获取token时，token自动释放
-      releaseEventToken(event)
-      SchedulerStoreRet(None, true)
-    }
-  }
-
-  private def releaseEventToken(event: FlowEvent): Unit = {
-    val traceId = event.getTraceId
-    if (event.hasToken) {
-      val token = event.getToken
-      val lockInfo = token.getValue
-      val owner = getLockOwner(lockInfo)
-      if (owner.isDefined && owner.get == traceId) {
-        debug(("msg", "release token"), ("traceId", traceId), ("lockInfo", lockInfo))
-        returnLock(lockInfo)
-      }
-    } else {
-      debug(("msg", "event has no token"), ("eventId", event.getEventId))
     }
   }
 
@@ -303,19 +228,32 @@ class HBaseTraceStore(executionContext: ExecutionContext = null) extends Abstrac
     val event = instance.getEvent
     val traceId = event.getTraceId
     val contextMap = getCurrentContext(traceId)
-    for (assign <- instance.getAssignList) {
-      val name = assign.getName
-      if (name.startsWith(CONTEXT_VAL_FLAG)) {
-        val flowValue = assign.getValue
-        val valueRef = ValueReference.newBuilder().setEventId(event.getEventId).setName(name).build()
-        val traceVal = TraceVariable.newBuilder().setReference(valueRef).setValue(flowValue).build()
-        contextMap.put(name, traceVal)
-      }
-    }
     instance.getUpdateList.foreach(v => {
       val name = v.getReference.getName
       contextMap.put(name, v)
     })
+    instance.getBackwardList.foreach(v => {
+      val reference = ValueReference.newBuilder()
+        .setEventId(event.getEventId)
+        .setName(v.getLogId)
+      val value = TraceVariable.newBuilder().setValue(
+        FlowValue.newBuilder().setBinary(v.toByteString)
+      ).setReference(reference).build()
+      contextMap.put(v.getLogId, value)
+    })
+    instance.getTokenList.foreach(v => {
+      val reference = ValueReference.newBuilder()
+        .setEventId(event.getEventId)
+        .setName(v.getToken)
+      val value = TraceVariable.newBuilder().setValue(
+        FlowValue.newBuilder().setBinary(v.toByteString)
+      ).setReference(reference).build()
+      contextMap.put(v.getToken, value)
+    })
+
+    val deletes = instance.getDeleteList.toSeq
+    contextMap --= deletes
+
     if (contextMap.size > 0) {
       val rowKey = getRowKey(traceId)
       val rowKeyBytes = Bytes.toBytes(rowKey)

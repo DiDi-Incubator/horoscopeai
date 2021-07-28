@@ -73,32 +73,7 @@ class DefaultTraceStore extends AbstractTraceStore with Logging {
     val tse = traceStores.get(traceId).get
     val mailbox = tse.eventStores.get(source).get
     val context = tse.traceContext
-    //goto
-    if (instance.hasGoto) {
-      val gotoMailbox = tse.eventStores.get(schStoreCol(null)).getOrElse(ListBuffer[FlowEvent]())
-      tse.eventStores.put(schStoreCol(null), gotoMailbox)
-      val gotoEvent = instance.getGotoBuilder
-      gotoEvent.setEventId(getEventId())
-      gotoEvent.setTraceId(traceId)
-      if (gotoEvent.hasToken) {
-        val token = gotoEvent.getTokenBuilder
-        token.setOwner(traceId)
-        gotoEvent.setToken(token)
-      }
-      debug(("append goto event to mailbox", gotoEvent), ("source", source))
-      gotoMailbox.append(gotoEvent.build())
-    }
     //context
-    //v1
-    for (assign <- instance.getAssignList) {
-      val name = assign.getName
-      if (name.startsWith(CONTEXT_VAL_FLAG)) {
-        val flowValue = assign.getValue
-        val valueRef = ValueReference.newBuilder().setEventId(event.getEventId).setName(name).build()
-        val traceVal = TraceVariable.newBuilder().setReference(valueRef).setValue(flowValue).build()
-        context.put(name, traceVal)
-      }
-    }
     //v2
     instance.getUpdateList.foreach(v => {
       val name = v.getReference.getName

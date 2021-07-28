@@ -12,27 +12,25 @@ import java.util.concurrent.ExecutionException
 import akka.actor.{Actor, ActorRef}
 import com.didichuxing.horoscope.core.Flow
 import com.didichuxing.horoscope.core.Flow._
-import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowInstance.Procedure
+import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowInstance.{Experiment, Procedure, Topic}
 import com.didichuxing.horoscope.core.FlowRuntimeMessage._
 import com.didichuxing.horoscope.dsl.{SemanticException, SyntaxException}
 import com.didichuxing.horoscope.runtime.FlowExecutorImpl.CommitEvent
-import com.didichuxing.horoscope.runtime._
-import com.didichuxing.horoscope.util.Utils.{bucket, getEventId}
+import com.didichuxing.horoscope.runtime.{Value, _}
+import com.didichuxing.horoscope.runtime.experiment.ExperimentController.{ExperimentPlan, FlowOption}
+import com.didichuxing.horoscope.runtime.expression.Expression
+import com.didichuxing.horoscope.runtime.interpreter.TopicLogState.LogTriggerKey
 import com.didichuxing.horoscope.util.Logging
+import com.didichuxing.horoscope.util.Utils.{bucket, getEventId}
 import com.typesafe.config.Config
 
+import scala.collection.JavaConverters._
 import scala.collection.mutable
+import scala.collection.mutable.ListBuffer
 import scala.concurrent.Future
 import scala.concurrent.duration.Duration
 import scala.language.implicitConversions
 import scala.util.{Failure, Success, Try}
-import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowEvent.Parent
-import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowEvent.{Choice => ChoiceMessage}
-import com.didichuxing.horoscope.runtime.expression.Expression
-import com.didichuxing.horoscope.runtime.experiment.ExperimentController.ExperimentChoice
-
-import scala.collection.JavaConverters._
-import scala.collection.mutable.ListBuffer
 
 // scalastyle:off
 class FlowInterpreter(
@@ -48,6 +46,10 @@ class FlowInterpreter(
 
   import scala.collection.JavaConversions._
 
+  implicit val builtIn = getBuiltIn()
+
+  lazy val flowGraph = getFlowGraph()
+
   // messages handled by actor
   case class Continue(context: Context)
 
@@ -58,8 +60,10 @@ class FlowInterpreter(
   val traceId: String = event.getTraceId
   val eventId: String = event.getEventId
 
-  val isLogRedirected: Boolean = Try(config.getBoolean("horoscope.flow-executor.log.redirected")).getOrElse(true)
-  val isLogDetailed: Boolean = Try(config.getBoolean("horoscope.flow-executor.log.detailed")).getOrElse(false)
+  val isTopicLogEnabled: Boolean = Try(
+    config.getBoolean("horoscope.flow-executor.topic-log.enabled")).getOrElse(true)
+  val isLogDetailed: Boolean = Try(
+    config.getBoolean("horoscope.flow-executor.detailed-log.enabled")).getOrElse(false)
 
   override def preStart(): Unit = {
     self ! Continue(Main)
@@ -80,16 +84,35 @@ class FlowInterpreter(
 
   type Dependencies = Iterable[Context]
   type Handle = PartialFunction[Try[Value], Unit]
-  type ExperimentFlow = (Flow, Option[ExperimentChoice])
+  type ExperimentFlow = (Flow, Option[ExperimentPlan])
 
-  def getExperimentFlow(flow: String)(args: ValueDict): ExperimentFlow = {
-    val controller = getController(flow)
-    if (controller.isDefined) {
-      val experimentInfo = controller.get.evaluate(Value(args))
-      (getFlowByName(experimentInfo.flow), Some(experimentInfo))
+  def getExperimentFlow(flow: String, plan: Option[ExperimentPlan])(args: Map[String, Value]): ExperimentFlow = {
+    if (plan.isDefined) {
+      val flowOption = Try(Some(plan.get.flowOptions(flow))).getOrElse(None)
+      val targetFlow = Try(flowOption.map(_.replacement).get).getOrElse(flow)
+      (getFlowByName(targetFlow), plan)
     } else {
-      (getFlowByName(flow), None)
+      var targetFlow: String = flow
+      var targetPlan: Option[ExperimentPlan] = None
+      var found = false
+      for (controller <- getController(flow).sortBy(_.priority) if !found) {
+        val plan = controller.query(Value(args))
+        if (plan.isDefined) {
+          val flowOption = Try(Some(plan.get.flowOptions(flow))).getOrElse(None)
+          val exptFlow = Try(flowOption.map(_.replacement).get).getOrElse(flow)
+          targetFlow = exptFlow
+          targetPlan = plan
+          found = true
+        }
+      }
+      (getFlowByName(targetFlow), targetPlan)
     }
+  }
+
+  def logTopic(topic: Flow.Topic): Unit = {
+    TopicLogState.newBuilder
+      .withEvent(event).withTopic(topic).withInterpreter(this)
+      .build().deduce().foreach(_.log())
   }
 
   object Main extends Context {
@@ -99,34 +122,34 @@ class FlowInterpreter(
         .setStartTime(System.currentTimeMillis())
     }
 
-    override lazy val procedure: FlowContext = FlowContext.apply(
-      event.getFlowName, Seq("main"), event.getArgumentMap, Try(Some(event.getParent)).getOrElse(None)
-    )
+    override lazy val procedure: FlowContext = FlowContext(event, Seq("main"))
+
+    lazy val tokenContext: Map[String, LoadTokenContext] = if (event.hasToken) {
+      Map("@#" -> new LoadTokenContext(event.getToken))
+    } else {
+      Map.empty[String, LoadTokenContext]
+    }
+
+    lazy val logContext: LoadLogContext = new LoadLogContext(event)
 
     override protected def execute(): Dependencies = {
-      if (procedure.isDone) {
-        done()
-      } else {
-        waits(procedure)
+      try {
+        after(tokenContext) {
+          if (procedure.isDone && logContext.isDone) {
+            done()
+          } else if (procedure.isDone) {
+            waits(logContext)
+          } else {
+            waits(procedure)
+          }
+        }
+      } catch {
+        case e: Throwable =>
+          println(s"main procedure execute failed, ${e.getMessage}")
+          done()
       }
     }
 
-    // load variables and choices inherited from parent flow
-    private def loadParent(parent: Option[Parent]): Unit = {
-      parent.foreach { p =>
-        p.getVariableList.asScala.foreach { variable =>
-          val variableName = variable.getReference.getName
-          val flow = variable.getReference.getFlowName
-          val value = Value(variable.getValue)
-          Log.addVariable(Log.VariableKey(variableName, flow), Nil, value)
-        }
-
-        p.getChoiceMap.asScala.foreach { pair =>
-          val (flow, choice) = pair
-          Log.addChoice(flow, Nil, choice.getChoiceList)
-        }
-      }
-    }
 
     private def collect(procedure: FlowContext): Unit = {
       procedure.collect()
@@ -135,29 +158,54 @@ class FlowInterpreter(
       }
     }
 
-    private def doLog(procedure: FlowContext): Unit = {
-      procedure.doLog()
-      for (child <- procedure.children) {
-        doLog(child)
+    private def updateLocalTrace(): Unit = {
+      val deleteKeys = Log.callbackTokens ++ Log.expiredLogIds
+      for (key <- deleteKeys) {
+        Trace.deletes += key
+        Trace.variables -= key
+      }
+      instance.getTokenBuilderList.asScala.foreach { builder =>
+        val token: String = if (builder.getToken.startsWith("#")) {
+          builder.getToken
+        } else {
+          "#" + builder.getToken
+        }
+        Trace.variables += (token -> TraceVariable.newBuilder()
+          .setValue(Value(Binary(builder.build().toByteArray)).as[FlowValue])
+          .build())
+      }
+
+      instance.getBackwardList.asScala.foreach { builder =>
+        val triggerId = if (builder.getLogId.startsWith("&")) {
+          builder.getLogId
+        } else {
+          "&" + builder.getLogId
+        }
+        Trace.variables += (triggerId -> TraceVariable.newBuilder()
+          .setValue(Value(Binary(builder.toByteArray)).as[FlowValue])
+          .build())
       }
     }
 
     private def log(procedure: FlowContext): Unit = {
-      if (isLogRedirected) {
-        // 1.load parent variables and choices
-        loadParent(procedure.parent)
-        // 2.collect and register flow variables
+      if (isTopicLogEnabled) {
+        // 1.collect and register flow variables
         collect(procedure)
-        // 3.log flow assigns and choices
-        doLog(procedure)
+
+        // 2.log topics
+        for ((name, topic) <- procedure.flow.totalTopics) {
+          logTopic(topic)
+        }
       }
     }
 
     override protected def onComplete: Handle = {
       case _: Success[Value] =>
+        log(procedure)
+        updateLocalTrace()
         instance.setEndTime(System.currentTimeMillis())
         instance.addAllUpdate(Trace.updates.values.toSeq)
-        log(procedure)
+        instance.addAllDelete(Trace.deletes)
         manager ! CommitEvent(traceId, eventId, Try(instance.build()), Trace.variables)
 
       case Failure(cause) =>
@@ -180,61 +228,80 @@ class FlowInterpreter(
     }
   }
 
-
   object FlowContext {
+    // for include
     def apply(flowName: String, scopes: Seq[String],
-      args: Map[String, Context], experimentContext: ValueDict): FlowContext = {
-      val (flow, exptChoice) = getExperimentFlow(flowName)(experimentContext.updated("@event_id", Value(eventId)))
-      val experimentArgs = Try(exptChoice.get.params).getOrElse(Map())
+      args: Map[String, Context], exptContext: Map[String, Value],
+      exptPlan: Option[ExperimentPlan]
+    ): FlowContext = {
+      val eventIdMap = Map("@event_id" -> Value(eventId))
+      val (flow, plan) = getExperimentFlow(flowName, exptPlan)(exptContext ++ eventIdMap)
+      val flowOption = Try(Some(plan.get.flowOptions(flowName))).getOrElse(None)
+      val exptArgs = Try {
+        flowOption.get.params.mapValues(v => Expression(v).apply(Value(exptContext ++ eventIdMap)))
+      }.getOrElse(Map[String, Value]())
 
       new FlowContext(flow, scopes,
-        procedure => (args ++ experimentArgs.iterator.map({
-          case (name, variable) =>
-            val key = if (name.startsWith("@")) name else "@" + name
-            (key, new PlaceholderContext(key, Try(Value(variable)))(procedure))
-        }).toMap ++ Map(
-          "@event_id" -> new PlaceholderContext("@event_id", Try(Value(eventId)))(procedure)
-        )),
-        exptChoice
+        procedure =>
+          args ++
+            (eventIdMap ++ exptArgs).iterator.map({
+              case (name, variable) =>
+                val key = if (name.startsWith("@")) name else "@" + name
+                (key, new PlaceholderContext(key, Try(Value(variable)))(procedure))
+            }).toMap,
+        plan
       )
     }
 
-    def apply(flowName: String, scopes: Seq[String],
-      args: java.util.Map[String, TraceVariable], parent: Option[Parent]): FlowContext = {
-      val exptContext = Value(parent.exptContext ++
-        args.mapValues(v => Value(v.getValue)) ++
+    // for schedule or callback event
+    def apply(event: FlowEvent, scopes: Seq[String]): FlowContext = {
+      val flowName = event.getFlowName
+      val args = event.getArgumentMap.asScala.mapValues(v => Value(v.getValue)) ++
         Map("@event_id" -> Value(eventId))
-      )
-      val (flow, exptChoice) = getExperimentFlow(flowName)(exptContext)
-      val exptArgs = Try(exptChoice.get.params).getOrElse(Map())
+      val exptContext = event.exptContext ++ args
+      val (flow, plan) = getExperimentFlow(flowName, event.exptPlan)(exptContext)
+      val flowOption = Try(Some(plan.get.flowOptions(flowName))).getOrElse(None)
+      val exptArgs = Try {
+        flowOption.get.params.mapValues({ v => Expression(v).apply(Value(exptContext)) })
+      }.getOrElse(Map[String, Value]())
 
       new FlowContext(
         flow, scopes,
-        procedure => ((args.mapValues(v => Value(v.getValue)) ++ exptArgs).iterator.map({
+        procedure => (args ++ exptArgs).iterator.map({
           case (name, variable) =>
             val key = if (name.startsWith("@")) name else "@" + name
             (key, new PlaceholderContext(key, Try(variable))(procedure))
-        }).toMap ++ Map(
-          "@event_id" -> new PlaceholderContext("@event_id", Try(Value(eventId)))(procedure)
-        )),
-        exptChoice, parent
+        }).toMap ++ Main.tokenContext,
+        plan
       )
     }
 
-    implicit class ParentHelper(parent: Option[FlowEvent.Parent]) {
+    implicit class ExperimentHelper(event: FlowEvent) {
       def exptContext: Map[String, Value] = {
-        val experimentContext = parent.map({ p =>
-          p.getExperimentMap.asScala.mapValues(Value(_))
-        }).getOrElse(Map[String, Value]())
+        val experiment = Try(Some(event.getExperiment)).getOrElse(None)
+        experiment.map({ p =>
+          p.getDependencyMap.asScala.mapValues(Value(_))
+        }).getOrElse(Map[String, Value]()).toMap
+      }
 
-        experimentContext.toMap
+      def exptPlan: Option[ExperimentPlan] = {
+        if (event.hasExperiment) {
+          val experiment = event.getExperiment
+          val plans = experiment.getPlanList.asScala.map(p => {
+            val args = p.getArgumentMap.asScala.toMap.mapValues(_.getText)
+            p.getOriginal -> FlowOption(p.getReplacement, args)
+          }).toMap
+          Some(ExperimentPlan(experiment.getName, experiment.getGroup, plans))
+        } else {
+          None
+        }
       }
     }
   }
 
   class FlowContext(
     val flow: Flow, val scopes: Seq[String], alias: FlowContext => Map[String, Context],
-    val experimentChoice: Option[ExperimentChoice], val parent: Option[Parent] = None
+    val plan: Option[ExperimentPlan]
   ) extends Context {
 
     implicit override def procedure: FlowContext = this
@@ -245,53 +312,32 @@ class FlowInterpreter(
 
     val children: ListBuffer[FlowContext] = ListBuffer.empty
 
-    val schedules: ListBuffer[ScheduleContext] = ListBuffer.empty
-
     val choices: ListBuffer[String] = ListBuffer.empty
 
-    lazy val logReferences: Set[String] = {
-      flow.logFields.view.filter(_.from == flow.name).flatMap(_.expression.references.map(_.identifier)).toSet
+    lazy val logDeps: Set[String] = {
+      flow.logVariables.view.filter(_.flow == flow.name)
+        .flatMap(_.expression.get.references.map(_.identifier)).toSet
     }
 
     def collect(): Unit = {
-      for ((name, argument) <- flow.arguments if argument.isReady) {
-        val argName = if (name.startsWith("@")) name else "@" + name
-        if (logReferences.contains(argName))
-          Log.addVariable(Log.VariableKey(argName, flow.name), scopes, argument.value)
-      }
-
-      Log.addChoice(flow.name, procedure.scopes, procedure.choices)
-    }
-
-    def doLog(): Unit = {
-      flow.logFields.filter(_.to == flow.name).foreach { f =>
-        val context = Log.variables.filter(_._1.flow == f.from).map(r => r._1.name -> r._2)
-        val value = Try(Some(f.expression.apply(Value(context)))).getOrElse(None)
-        if (value.isDefined) log.putAssign(f.name, value.get.as[FlowValue])
-      }
-
-      flow.logChoices.foreach { flow =>
-        val flowChoice = Log.choices.getOrElse(flow, Nil).map(choice => s"$flow:$choice")
-        flowChoice.foreach(log.addContextChoice)
-      }
-
-      schedules.foreach { schedule =>
-        val parent = schedule.builder.getParentBuilder
-        Log.variables.foreach { record =>
-          val (Log.VariableKey(name, flow), value) = record
-          val traceVariable = TraceVariable.newBuilder()
-          val valueReference = ValueReference.newBuilder().setEventId(eventId).setFlowName(flow).setName(name)
-          traceVariable.setReference(valueReference)
-          traceVariable.setValue(value.as[FlowValue])
-          parent.addVariable(traceVariable.build())
+      if (!log.getFaultMap.asScala.keySet.exists(_.startsWith("-token-fault->"))) {
+        for ((name, argument) <- flow.arguments if argument.isReady) {
+          val argName = if (name.startsWith("@")) name else "@" + name
+          if (logDeps.contains(argName))
+            Log.addVariable(Log.VariableKey(argName, flow.name), scopes, argument.value)
         }
 
-        Log.choices.foreach { record =>
-          val (flow, choices) = record
-          if (choices.nonEmpty) {
-            val builder = ChoiceMessage.newBuilder().addAllChoice(choices.asJava)
-            parent.putChoice(flow, builder.build())
-          }
+        Log.addChoice(flow.name, procedure.scopes, procedure.choices)
+        Log.addFlow(flow.name, procedure.scopes)
+      }
+    }
+
+    def collectToken(): Unit = {
+      if (args.contains("@#")) {
+        val token = procedure.args("@#").asInstanceOf[LoadTokenContext].token
+        val tokenVal = if (token.startsWith("#")) token else "#" + token
+        if (tokenVal.nonEmpty) {
+          Log.callbackTokens ::= tokenVal
         }
       }
     }
@@ -306,10 +352,10 @@ class FlowInterpreter(
         .addAllScope(scopes)
         .setStartTime(System.currentTimeMillis())
 
-      if (experimentChoice.isDefined) {
-        val exptChoice = experimentChoice.get
-        val experiment = FlowInstance.Experiment.newBuilder()
-          .setName(exptChoice.name).setGroup(exptChoice.group)
+      if (plan.isDefined) {
+        val value = plan.get
+        val experiment = Experiment.newBuilder()
+          .setName(value.name).setGroup(value.group)
         procedure.setExperiment(experiment)
       }
 
@@ -324,6 +370,7 @@ class FlowInterpreter(
 
     override protected def onComplete: Handle = {
       case _ =>
+        collectToken()
         for ((name, argument) <- flow.arguments if argument.isReady) {
           log.putArgument(name, argument.value.as[FlowValue])
         }
@@ -335,6 +382,7 @@ class FlowInterpreter(
       case include: Include => new IncludeContext(include)
       case schedule: Schedule => new ScheduleContext(schedule)
       case subscribe: Subscribe => new SubscribeContext(subscribe)
+      case callback: Callback => new CallbackContext(callback)
       case load: Load => new LoadContext(load)
       case update: Update => new UpdateContext(update)
       case terminator: Terminator => new BlockContext(terminator)
@@ -353,9 +401,19 @@ class FlowInterpreter(
 
     def procedure: FlowContext
 
-    lazy val expressions: Map[String, Expression] = getController(flow).map(_.dependency).getOrElse(Map())
+    // 计算实验所有的可能依赖项
+    // 除了dependency之外, 还应该包含args
+    lazy val references: Map[String, Expression] = if (procedure.plan.isEmpty) {
+      getController(flow).flatMap(_.dependency).toMap
+    } else if (procedure.plan.get.flowOptions.contains(flow)) {
+      val flowPlan = procedure.plan.get.flowOptions(flow)
+      val params = flowPlan.params
+      params.values.flatMap(v => Expression(v).references).map(ref => ref.name -> ref).toMap
+    } else {
+      Map()
+    }
 
-    lazy val exptContexts: Map[String, Context] = {
+    lazy val contexts: Map[String, Context] = {
       procedure.nodes.flatMap {
         case l: LoadContext => Some((l.load.name, l))
         case u: UpdateContext => Some((u.update.name, u))
@@ -366,11 +424,11 @@ class FlowInterpreter(
       }.toMap ++ procedure.flow.variables.mapValues(nodeToContext)
     }
 
-    lazy val exptDependencies: Map[String, Context] = {
-      (expressions - "@event_id").values.flatMap({ expression =>
+    lazy val exptDeps: Map[String, Context] = {
+      (references - "@event_id").values.flatMap({ expression =>
         expression.references.flatMap({ ref =>
-          if (exptContexts.contains(ref.identifier)) {
-            Some((ref.identifier, exptContexts(ref.identifier)))
+          if (contexts.contains(ref.identifier)) {
+            Some((ref.identifier, contexts(ref.identifier)))
           } else {
             logging.error(s"expression reference variable: ${ref.identifier} doesn't exist" +
               s" in context of flow: ${flow} ")
@@ -380,33 +438,45 @@ class FlowInterpreter(
       }).toMap
     }
 
-    lazy val exptVariables: Map[String, Value] = expressions.mapValues(_.apply(Value(exptDependencies.mapValues(_.value))))
+    lazy val exptVariables: Map[String, Value] = references.mapValues(_.apply(Value(exptDeps.mapValues(_.value))))
   }
 
   class IncludeContext(val include: Include)(
     implicit override val procedure: FlowContext
   ) extends Context with FaultRecorder with ExperimentContext {
     override def name: String = include.scope
+
     override def flow: String = include.flow
 
+    lazy val tokenContext: Map[String, LoadTokenContext] = include.token.map { t =>
+      val token = t.value match {
+        case Text(t) => t
+        case v: Value => v.toString
+      }
+      "@#" -> new LoadTokenContext("#" + token)
+    }.toMap
+
     lazy val target: FlowContext = {
-      val childContext = FlowContext(
+      val includeContext = FlowContext.apply(
         include.flow,
         procedure.scopes :+ include.scope,
-        include.args.map({ case (name, node) => ("@" + name) -> nodeToContext(node) }),
-        Value(exptVariables)
+        include.args.map({ case (name, node) => ("@" + name) -> nodeToContext(node) })
+          ++ tokenContext,
+        exptVariables,
+        procedure.plan
       )
-      procedure.children += childContext
-
-      childContext
+      procedure.children += includeContext
+      includeContext
     }
 
     override protected def execute(): Dependencies = {
-      after(exptDependencies) {
-        if (target.isDone) {
-          done()
-        } else {
-          waits(target)
+      after(exptDeps ++ include.token.map("token" -> nodeToContext(_))) {
+        after(tokenContext) {
+          if (target.isDone) {
+            done()
+          } else {
+            waits(target)
+          }
         }
       }
     }
@@ -427,6 +497,7 @@ class FlowInterpreter(
     implicit override val procedure: FlowContext
   ) extends Context with FaultRecorder with ExperimentContext {
     override def name: String = subscribe.scope
+
     override def flow: String = subscribe.flow
 
     lazy val target: FlowContext = {
@@ -434,7 +505,8 @@ class FlowInterpreter(
         flow,
         procedure.scopes :+ subscribe.scope,
         subscribe.args.map({ case (name, node) => ("@" + name) -> nodeToContext(node) }),
-        Value(exptVariables)
+        exptVariables,
+        procedure.plan
       )
       procedure.children += child
 
@@ -442,10 +514,12 @@ class FlowInterpreter(
     }
 
     override def execute(): Dependencies = {
-      after(exptDependencies ++ subscribe.condition.map("condition" -> nodeToContext(_)) ++
-        subscribe.target.map("target" -> nodeToContext(_))) {
+      after(exptDeps ++
+        subscribe.target.map("target" -> nodeToContext(_)) ++
+        subscribe.condition.map("condition" -> nodeToContext(_))) {
+        val targetValue = Try(subscribe.target.get.value).getOrElse(Value(eventId))
         if (subscribe.condition.forall(_.value.as[Boolean]) &&
-          subscribe.target.forall(t => subscribe.traffic.contains(bucket(t.value)))) {
+          subscribe.traffic.contains(bucket(targetValue))) {
           if (target.isDone) {
             done()
           } else {
@@ -471,7 +545,7 @@ class FlowInterpreter(
     lazy val builder: FlowEvent.Builder = Main.instance.addScheduleBuilder()
 
     override protected def execute(): Dependencies = {
-      after(exptDependencies) {
+      after(exptDeps ++ schedule.token.map("token" -> nodeToContext(_))) {
         using(schedule.args ++ schedule.trace.map("$" -> _)) { args =>
           builder.setEventId(getEventId())
           builder.setTraceId(
@@ -487,18 +561,64 @@ class FlowInterpreter(
           for ((name, argument) <- args if schedule.args.contains(name)) {
             builder.putArgument(name, TraceVariable.newBuilder().setValue(argument.as[FlowValue]).build())
           }
-
-          val parent = builder.getParentBuilder
+          if (schedule.token.isDefined) {
+            val tokenValue = schedule.token.get.value match {
+              case Text(t) => t
+              case v: Value => v.toString
+            }
+            builder.setToken("#" + tokenValue)
+          }
+          builder.getParentBuilder
             .setEventId(eventId)
             .setTraceId(traceId)
             .setFlowName(procedure.flow.name)
             .addAllScope(procedure.scopes)
-
-          for ((name, argument) <- exptVariables) {
-            parent.putExperiment(name, argument.as[FlowValue])
+          if (procedure.plan.isDefined) {
+            builder.setExperiment(procedure.plan.get.experimentContext)
           }
-          procedure.schedules += this
+          for ((name, argument) <- exptVariables) {
+            builder.getExperimentBuilder.putDependency(name, argument.as[FlowValue])
+          }
+          Log.scheduleEvents += builder
 
+          done()
+        }
+      }
+    }
+  }
+
+  class CallbackContext(val callback: Callback)(
+    implicit override val procedure: FlowContext
+  ) extends Context {
+
+    override protected def execute(): Dependencies = {
+      using(callback.args ++ Map("token" -> callback.token)) { args =>
+        if (args("token") == NULL) {
+          done()
+        } else {
+          // 1. save token context
+          val tokenBuilder = TokenContext.newBuilder()
+            .setToken('#' + args("token").as[String])
+          for ((name, argument) <- args if callback.args.contains(name)) {
+            tokenBuilder.putArgument(name, argument.as[FlowValue])
+          }
+          Main.instance.addToken(tokenBuilder.build())
+
+          // 2.1 new timeout schedule event
+          val scheduleBuilder = Main.instance.addScheduleBuilder()
+          scheduleBuilder.setEventId(getEventId())
+            .setTraceId(traceId)
+            .setFlowName(callback.timeoutFlow.get)
+            .setScheduledTimestamp(System.currentTimeMillis() + callback.timeout.toMillis)
+            .setToken('#' + args("token").as[String])
+
+          // 2.2 inherit experiment plan from parent procedure
+          if (procedure.plan.isDefined) {
+            scheduleBuilder.setExperiment(procedure.plan.get.experimentContext)
+          }
+
+          // 3. register callback flow to help logging
+          Log.callbackFlows += callback.flow
           done()
         }
       }
@@ -547,31 +667,197 @@ class FlowInterpreter(
   }
 
   object Log {
-
     case class VariableKey(name: String, flow: String)
-
     // variableKey -> [(scopes, value)]
-    private var _variables: Map[VariableKey, List[(Seq[String], Value)]] = Map()
+    val variables: mutable.Map[VariableKey, List[(String, Value)]] = mutable.Map()
     // flow -> [(scopes, choice)]
-    private var _choices: Map[String, List[(Seq[String], Seq[String])]] = Map()
+    val choices: mutable.Map[String, List[(String, Seq[String])]] = mutable.Map()
+    // flow -> [scopes]
+    val flows: mutable.Map[String, Set[String]] = mutable.Map()
 
-    // When a flow is called recursively, only return the last (the longest scopes) procedure
-    lazy val variables: Map[VariableKey, Value] = {
-      _variables.mapValues(v => v.maxBy(_._1.length)._2)
+    val scheduleEvents: ListBuffer[FlowEvent.Builder] = ListBuffer.empty
+
+    // help to determine log state
+    val callbackFlows: ListBuffer[String] = ListBuffer.empty
+    // #token
+    var callbackTokens: List[String] = Nil
+    // &logId
+    var expiredLogIds: List[String] = Nil
+    // #token -> tokenContext
+    val tokenContext: mutable.Map[String, TokenContext] = mutable.Map()
+
+    def getVariables(flow: String, op: String, scope: String = ""): Map[VariableKey, Value] = {
+      variables.filter(_._1.flow == flow).mapValues(v => {
+        val scopeMatched = v.filter(_._1.startsWith(scope))
+        if (scopeMatched.isEmpty) {
+          NULL
+        } else {
+          val result = op match {
+            case "_min" => scopeMatched.minBy(_._1.length)
+            case "_max" => scopeMatched.maxBy(_._1.length)
+          }
+          result._2
+        }
+      }).toMap
     }
 
-    lazy val choices: Map[String, Seq[String]] = {
-      _choices.mapValues(c => c.maxBy(_._1.length)._2)
+    def getChoice(flow: String, op: String, scope: String = ""): Seq[String] = {
+      val scopeMatched = choices.getOrElse(flow, Nil).filter(_._1.startsWith(scope))
+      if (scopeMatched.isEmpty) {
+        Nil
+      } else {
+        op match {
+          case "_min" => scopeMatched.minBy(_._1.length)._2
+          case "_max" => scopeMatched.maxBy(_._1.length)._2
+        }
+      }
     }
 
     def addVariable(key: VariableKey, scopes: Seq[String], value: Value): Unit = {
-      val oldValue = _variables.getOrElse(key, Nil)
-      _variables += (key -> ((scopes, value) :: oldValue))
+      val oldValue = variables.getOrElse(key, Nil)
+      variables += (key -> ((scopes.mkString(","), value) :: oldValue))
     }
 
     def addChoice(flow: String, scopes: Seq[String], choice: Seq[String]): Unit = {
-      val oldValue = _choices.getOrElse(flow, Nil)
-      _choices += (flow -> ((scopes, choice) :: oldValue))
+      val oldValue = choices.getOrElse(flow, Nil)
+      choices += (flow -> ((scopes.mkString(","), choice) :: oldValue))
+    }
+
+    def addFlow(flow: String, scopes: Seq[String]): Unit = {
+      val oldValue = flows.getOrElse(flow, Set())
+      flows += (flow -> (oldValue ++ Set(scopes.mkString(","))))
+    }
+  }
+
+  object ForwardLog {
+    // [topic -> [name -> value]]
+    val variables: mutable.Map[String, Map[String, Value]] = mutable.Map()
+
+    // [topic -> [name -> choices]
+    val choices: mutable.Map[String, Map[String, List[String]]] = mutable.Map()
+
+    // [topic -> (name, flow)]
+    val flows: mutable.Map[String, List[(String, String)]] = mutable.Map()
+
+    def addFlow(topic: String, tag: String, flow: String): Unit = {
+      val oldValue = flows.getOrElse(topic, Nil)
+      flows += (topic -> ((tag, flow) :: oldValue))
+    }
+
+    def addChoice(topic: String, name: String, choice: Seq[String]): Unit = {
+      var value = choices.getOrElse(topic, Map())
+      value += (name -> choice.toList)
+      choices += (topic -> value)
+    }
+
+    def addVariable(topic: String, name: String, variable: Value): Unit = {
+      var value = variables.getOrElse(topic, Map())
+      value += (name -> variable)
+      variables += (topic -> value)
+    }
+
+    def addContext(forward: ForwardContext): Unit = {
+      val topic = forward.getTopicName
+      flows += (topic -> forward.getTagMap.asScala.mapValues(_.getText).toList)
+      choices += (topic -> forward.getChoiceMap.asScala.mapValues(_.getChoiceList.toList).toMap)
+      variables += (topic -> forward.getVariableMap.asScala.mapValues(Value(_)).toMap)
+    }
+
+    def toForward(topic: String): ForwardContext = {
+      val tags = flows.getOrElse(topic, Nil).toMap.mapValues(Value(_).as[FlowValue]).asJava
+      val builder = ForwardContext.newBuilder()
+        .setTopicName(topic)
+        .putAllVariable(variables.getOrElse(topic, Map()).mapValues(_.as[FlowValue]))
+        .putAllTag(tags)
+      val chooses = choices.getOrElse(topic, Map())
+        .mapValues(c => Choose.newBuilder().addAllChoice(c).build())
+      builder.putAllChoice(chooses)
+      builder.build()
+    }
+  }
+
+  object BackwardLog {
+    // logKey -> name -> value
+    val variables: mutable.Map[LogTriggerKey, Map[String, Value]] = mutable.Map()
+    // logKey -> name -> choices
+    val choices: mutable.Map[LogTriggerKey, Map[String, Seq[String]]] = mutable.Map()
+    // logKey -> [(name, flowName)]
+    val flows: mutable.Map[LogTriggerKey, List[(String, String)]] = mutable.Map()
+    // logKey -> [flow]
+    val dependencyFlows: mutable.Map[LogTriggerKey, Set[String]] = mutable.Map()
+
+    def addVariable(key: LogTriggerKey, name: String, variable: Value): Unit = {
+      var value = variables.getOrElse(key, Map())
+      // 保证就近原则
+      if (!value.contains(name)) {
+        value += (name -> variable)
+        variables += (key -> value)
+      }
+    }
+
+    def addFlow(key: LogTriggerKey, tag: String, flow: String): Unit = {
+      val oldValue = flows.getOrElse(key, Nil)
+      flows += (key -> ((tag, flow) :: oldValue))
+      removeDependencyFlows(key, Set(flow))
+    }
+
+    def setDependencyFlows(key: LogTriggerKey, flows: Set[String]): Unit = {
+      if (!dependencyFlows.contains(key)) {
+        dependencyFlows += (key -> flows)
+      }
+    }
+
+    def removeDependencyFlows(key: LogTriggerKey, flows: Set[String]): Unit = {
+      val value = dependencyFlows.getOrElse(key, Set())
+      dependencyFlows += (key -> (value -- flows))
+    }
+
+    def addChoice(key: LogTriggerKey, name: String, choice: Seq[String]): Unit = {
+      var value = choices.getOrElse(key, Map())
+      // 保证就近原则
+      if (!value.contains(name)) {
+        value += (name -> choice)
+      }
+      choices += (key -> value)
+    }
+
+    def addContext(key: LogTriggerKey, context: BackwardContext): Unit = {
+      flows += (key -> context.getTagMap.asScala.mapValues(_.getText).toList)
+      choices += (key -> context.getChoiceMap.asScala.mapValues(_.getChoiceList.asScala).toMap)
+      variables += (key -> context.getVariableMap.mapValues(Value(_)).toMap)
+      dependencyFlows += (key -> context.getDependencyFlowList.toSet)
+    }
+
+    def toBackward(key: LogTriggerKey): BackwardContext = {
+      val builder = BackwardContext.newBuilder()
+        .setTopicName(key.topicName)
+        .setLogId(key.logId)
+        .setEventId(key.eventId)
+        .putAllVariable(variables.getOrElse(key, Map()).mapValues(_.as[FlowValue]))
+      val chooses = choices.getOrElse(key, Map.empty)
+        .mapValues(c => Choose.newBuilder().addAllChoice(c).build())
+      builder.putAllChoice(chooses)
+        .putAllTag(flows.getOrElse(key, Nil).toMap.mapValues(Value(_).as[FlowValue]).asJava)
+        .addAllDependencyFlow(dependencyFlows.getOrElse(key, Set()).asJava)
+      builder.build()
+    }
+
+    def toTopic(key: LogTriggerKey, topic: Flow.Topic): FlowInstance.Topic = {
+      val namingMap = topic.tagFields.map(r => (r.flow, r.name)).toMap
+      val builder = FlowInstance.Topic.newBuilder()
+        .setTraceId(traceId)
+        .setTopicName(key.topicName)
+        .setLogId(key.logId.substring(1))
+        .setTimestamp(System.currentTimeMillis())
+
+      // 只记录收集到的字段, 未收集到的字段不记录
+      val variableFields = variables.getOrElse(key, Map())
+      val choiceFields = choices.getOrElse(key, Map()).mapValues(Value(_))
+      val triggeredTags = flows.getOrElse(key, Nil).map(r => (r._1, Value(true))).toMap
+      val unTriggeredTags = dependencyFlows.getOrElse(key, Set()).map(r => (namingMap(r), Value(false))).toMap
+      builder.putAllField(
+        (variableFields ++ choiceFields ++ triggeredTags ++ unTriggeredTags).mapValues(_.as[FlowValue])
+      ).build()
     }
   }
 
@@ -602,6 +888,7 @@ class FlowInterpreter(
 
     val updates: mutable.Map[String, TraceVariable] = mutable.Map.empty
     val loads: mutable.Set[String] = mutable.Set.empty
+    val deletes: mutable.Set[String] = mutable.Set.empty
   }
 
   class LoadContext(val load: Load) extends Context {
@@ -622,6 +909,80 @@ class FlowInterpreter(
       } else {
         Trace.load onSuccess {
           case _ => self ! Continue(this)
+        }
+        waits()
+      }
+    }
+  }
+
+  class LoadTokenContext(val token: String) extends Context with FaultRecorder {
+    override def procedure: FlowContext = Main.procedure
+
+    private val tokenValue: String = if (token.startsWith("#")) token else "#" + token
+
+    override def execute(): Dependencies = {
+      if (Trace.load.isCompleted) {
+        Trace.variables.get(tokenValue) match {
+          case Some(t) =>
+            val tokenContext = TokenContext.parseFrom(t.getValue.getBinary)
+            Log.tokenContext += (tokenValue -> tokenContext)
+            val args = tokenContext.getArgumentMap.asScala.toMap.mapValues(Value(_))
+            done(Value(args))
+          case None =>
+            done(Failure(new IllegalArgumentException(s"token context of ${tokenValue} was expired ")))
+        }
+      } else {
+        Trace.load onSuccess {
+          case _ => self ! Continue(this)
+        }
+        waits()
+      }
+    }
+
+    override def name: String = "-token-fault->" + tokenValue
+
+    override protected def onComplete: Handle = super.onComplete orElse {
+      case Success(_) => Unit
+    }
+  }
+
+  class LoadLogContext(event: FlowEvent) extends Context {
+    override def procedure: FlowContext = Main.procedure
+
+    override protected def execute(): Dependencies = {
+      if (Trace.load.isCompleted) {
+        // 1.load backward context by trigger from event and token context
+        for (trigger <- event.getTriggerList ++ Log.tokenContext.values.map(_.getTrigger)) {
+          val logId = if (trigger.getLogId.startsWith("&")) {
+            trigger.getLogId
+          } else {
+           "&" + trigger.getLogId
+          }
+          val logKey = LogTriggerKey(trigger.getLogId, trigger.getTopicName, trigger.getEventId)
+          Trace.variables.get(logId).foreach { traceVariable =>
+            BackwardLog.addContext(logKey, BackwardContext.parseFrom(traceVariable.getValue.getBinary))
+          }
+        }
+
+        // 2.load forward log
+        // 2.1 forward context from event
+        if (event.hasForward) ForwardLog.addContext(event.getForward)
+
+        // 2.2 forward context from callback timeout event
+        for (token <- Log.callbackTokens) {
+          val tokenValue = if (token.startsWith("#")) token else "#" + token
+          Trace.variables.get(tokenValue) match {
+            case Some(t) => {
+              ForwardLog.addContext(TokenContext.parseFrom(t.getValue.getBinary).getForward)
+            }
+            case None => Unit
+          }
+        }
+        done()
+      } else {
+        Trace.load.onSuccess {
+          case _ =>
+            Context.continue(this)
         }
         waits()
       }
@@ -710,11 +1071,13 @@ class FlowInterpreter(
 
   trait LogContext extends Context {
     def procedure: FlowContext
+
     def flow: String = procedure.flow.name
+
     def name: String
 
     def logAssign(node: Variable, value: Value): Unit = {
-      if (isLogRedirected && procedure.logReferences.contains(name)) {
+      if (isTopicLogEnabled && procedure.logDeps.contains(name)) {
         Log.addVariable(Log.VariableKey(name, flow), procedure.scopes, value)
       }
 
@@ -971,6 +1334,7 @@ class FlowInterpreter(
       }
     }
   }
+
   trait FaultRecorder extends Context {
     def name: String
 
