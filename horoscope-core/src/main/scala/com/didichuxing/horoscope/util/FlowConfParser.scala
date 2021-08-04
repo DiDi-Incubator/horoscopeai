@@ -15,6 +15,7 @@ object FlowConfParser {
     def parseLogConf(): LogConf = {
       val topic = conf.getString("name")
       val enabled = Try(conf.getBoolean(ENABLED)).getOrElse(false)
+      val detailed = Try(conf.getBoolean("detailed")).getOrElse(false)
       val flow = conf.getString("flow")
       val fields = if (conf.hasPath("fields")) {
         conf.getConfigList(FIELDS).asScala.map({ field =>
@@ -33,7 +34,7 @@ object FlowConfParser {
         Nil
       }
 
-      LogConf(topic, enabled, flow, fields)
+      LogConf(topic, enabled, flow, fields, detailed)
     }
   }
 

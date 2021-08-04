@@ -101,7 +101,7 @@ class GitFlowStore(
         case e: Throwable =>
           e.printStackTrace()
           error(("msg", "load flow error"), ("path", s"${file.getAbsolutePath}"), ("ex", e.toString))
-          None
+          throw e
       }
     }
     val m = flows.toMap

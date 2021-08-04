@@ -145,7 +145,7 @@ class FlowInterpreter(
         }
       } catch {
         case e: Throwable =>
-          println(s"main procedure execute failed, ${e.getMessage}")
+          warn(s"main procedure execute failed, ${e.getMessage}")
           done()
       }
     }
@@ -159,7 +159,7 @@ class FlowInterpreter(
     }
 
     private def updateLocalTrace(): Unit = {
-      val deleteKeys = Log.callbackTokens ++ Log.expiredLogIds
+      val deleteKeys = OriginalLog.callbackTokens ++ OriginalLog.expiredLogIds
       for (key <- deleteKeys) {
         Trace.deletes += key
         Trace.variables -= key
@@ -324,11 +324,11 @@ class FlowInterpreter(
         for ((name, argument) <- flow.arguments if argument.isReady) {
           val argName = if (name.startsWith("@")) name else "@" + name
           if (logDeps.contains(argName))
-            Log.addVariable(Log.VariableKey(argName, flow.name), scopes, argument.value)
+            OriginalLog.addVariable(OriginalLog.VariableKey(argName, flow.name), scopes, argument.value)
         }
 
-        Log.addChoice(flow.name, procedure.scopes, procedure.choices)
-        Log.addFlow(flow.name, procedure.scopes)
+        OriginalLog.addChoice(flow.name, procedure.scopes, procedure.choices)
+        OriginalLog.addFlow(flow.name, procedure.scopes)
       }
     }
 
@@ -337,7 +337,7 @@ class FlowInterpreter(
         val token = procedure.args("@#").asInstanceOf[LoadTokenContext].token
         val tokenVal = if (token.startsWith("#")) token else "#" + token
         if (tokenVal.nonEmpty) {
-          Log.callbackTokens ::= tokenVal
+          OriginalLog.callbackTokens ::= tokenVal
         }
       }
     }
@@ -579,7 +579,7 @@ class FlowInterpreter(
           for ((name, argument) <- exptVariables) {
             builder.getExperimentBuilder.putDependency(name, argument.as[FlowValue])
           }
-          Log.scheduleEvents += builder
+          OriginalLog.scheduleEvents += builder
 
           done()
         }
@@ -618,7 +618,7 @@ class FlowInterpreter(
           }
 
           // 3. register callback flow to help logging
-          Log.callbackFlows += callback.flow
+          OriginalLog.callbackFlows += callback.flow
           done()
         }
       }
@@ -666,7 +666,7 @@ class FlowInterpreter(
     }
   }
 
-  object Log {
+  object OriginalLog {
     case class VariableKey(name: String, flow: String)
     // variableKey -> [(scopes, value)]
     val variables: mutable.Map[VariableKey, List[(String, Value)]] = mutable.Map()
@@ -731,74 +731,84 @@ class FlowInterpreter(
 
   object ForwardLog {
     // [topic -> [name -> value]]
-    val variables: mutable.Map[String, Map[String, Value]] = mutable.Map()
+    val variables: mutable.Map[String, Map[String, TraceVariable]] = mutable.Map()
 
     // [topic -> [name -> choices]
-    val choices: mutable.Map[String, Map[String, List[String]]] = mutable.Map()
+    val choices: mutable.Map[String, Map[String, TraceVariable]] = mutable.Map()
 
-    // [topic -> (name, flow)]
-    val flows: mutable.Map[String, List[(String, String)]] = mutable.Map()
+    // [topic -> (name, true)]
+    val flows: mutable.Map[String, Map[String, TraceVariable]] = mutable.Map()
 
-    def addFlow(topic: String, tag: String, flow: String): Unit = {
-      val oldValue = flows.getOrElse(topic, Nil)
-      flows += (topic -> ((tag, flow) :: oldValue))
+    def addFlow(topic: String, name: String, variable: TraceVariable): Unit = {
+      var map = flows.getOrElse(topic, Map())
+      map += (name -> variable)
+      flows += (topic -> map)
     }
 
-    def addChoice(topic: String, name: String, choice: Seq[String]): Unit = {
-      var value = choices.getOrElse(topic, Map())
-      value += (name -> choice.toList)
-      choices += (topic -> value)
+    def addChoice(topic: String, name: String, variable: TraceVariable): Unit = {
+      var map = choices.getOrElse(topic, Map())
+      map += (name -> variable)
+      choices += (topic -> map)
     }
 
-    def addVariable(topic: String, name: String, variable: Value): Unit = {
-      var value = variables.getOrElse(topic, Map())
-      value += (name -> variable)
-      variables += (topic -> value)
+    def addVariable(topic: String, name: String, variable: TraceVariable): Unit = {
+      var map = variables.getOrElse(topic, Map())
+      map += (name -> variable)
+      variables += (topic -> map)
     }
 
     def addContext(forward: ForwardContext): Unit = {
       val topic = forward.getTopicName
-      flows += (topic -> forward.getTagMap.asScala.mapValues(_.getText).toList)
-      choices += (topic -> forward.getChoiceMap.asScala.mapValues(_.getChoiceList.toList).toMap)
-      variables += (topic -> forward.getVariableMap.asScala.mapValues(Value(_)).toMap)
+      flows += (topic -> forward.getTagList.asScala.map(e => e.getReference.getName -> e).toMap)
+      choices += (topic -> forward.getChoiceList.asScala.map(e => e.getReference.getName -> e).toMap)
+      variables += (topic -> forward.getVariableList.asScala.map(e => e.getReference.getName -> e).toMap)
     }
 
     def toForward(topic: String): ForwardContext = {
-      val tags = flows.getOrElse(topic, Nil).toMap.mapValues(Value(_).as[FlowValue]).asJava
-      val builder = ForwardContext.newBuilder()
+      ForwardContext.newBuilder()
         .setTopicName(topic)
-        .putAllVariable(variables.getOrElse(topic, Map()).mapValues(_.as[FlowValue]))
-        .putAllTag(tags)
-      val chooses = choices.getOrElse(topic, Map())
-        .mapValues(c => Choose.newBuilder().addAllChoice(c).build())
-      builder.putAllChoice(chooses)
-      builder.build()
+        .addAllVariable(variables.getOrElse(topic, Map()).values.asJava)
+        .addAllTag(flows.getOrElse(topic, Nil).toMap.values.asJava)
+        .addAllChoice(choices.getOrElse(topic, Map()).values.asJava)
+        .build()
     }
   }
 
   object BackwardLog {
     // logKey -> name -> value
-    val variables: mutable.Map[LogTriggerKey, Map[String, Value]] = mutable.Map()
+    val variables: mutable.Map[LogTriggerKey, Map[String, TraceVariable]] = mutable.Map()
     // logKey -> name -> choices
-    val choices: mutable.Map[LogTriggerKey, Map[String, Seq[String]]] = mutable.Map()
+    val choices: mutable.Map[LogTriggerKey, Map[String, TraceVariable]] = mutable.Map()
     // logKey -> [(name, flowName)]
-    val flows: mutable.Map[LogTriggerKey, List[(String, String)]] = mutable.Map()
+    val flows: mutable.Map[LogTriggerKey, Map[String, TraceVariable]] = mutable.Map()
     // logKey -> [flow]
     val dependencyFlows: mutable.Map[LogTriggerKey, Set[String]] = mutable.Map()
 
-    def addVariable(key: LogTriggerKey, name: String, variable: Value): Unit = {
-      var value = variables.getOrElse(key, Map())
+    def addVariable(key: LogTriggerKey, name: String, variable: TraceVariable): Unit = {
+      var map = variables.getOrElse(key, Map())
       // 保证就近原则
-      if (!value.contains(name)) {
-        value += (name -> variable)
-        variables += (key -> value)
+      if (!map.contains(name)) {
+        map += (name -> variable)
+        variables += (key -> map)
       }
     }
 
-    def addFlow(key: LogTriggerKey, tag: String, flow: String): Unit = {
-      val oldValue = flows.getOrElse(key, Nil)
-      flows += (key -> ((tag, flow) :: oldValue))
-      removeDependencyFlows(key, Set(flow))
+    def addChoice(key: LogTriggerKey, name: String, variable: TraceVariable): Unit = {
+      var map = choices.getOrElse(key, Map())
+      // 保证就近原则
+      if (!map.contains(name)) {
+        map += (name -> variable)
+      }
+      choices += (key -> map)
+    }
+
+    def addFlow(key: LogTriggerKey, name: String, flow: String, variable: TraceVariable): Unit = {
+      var map = flows.getOrElse(key, Map())
+      if (!map.contains(name)) {
+        map += (name -> variable)
+        flows += (key -> map)
+        removeDependencyFlows(key, Set(flow))
+      }
     }
 
     def setDependencyFlows(key: LogTriggerKey, flows: Set[String]): Unit = {
@@ -812,52 +822,50 @@ class FlowInterpreter(
       dependencyFlows += (key -> (value -- flows))
     }
 
-    def addChoice(key: LogTriggerKey, name: String, choice: Seq[String]): Unit = {
-      var value = choices.getOrElse(key, Map())
-      // 保证就近原则
-      if (!value.contains(name)) {
-        value += (name -> choice)
-      }
-      choices += (key -> value)
-    }
-
     def addContext(key: LogTriggerKey, context: BackwardContext): Unit = {
-      flows += (key -> context.getTagMap.asScala.mapValues(_.getText).toList)
-      choices += (key -> context.getChoiceMap.asScala.mapValues(_.getChoiceList.asScala).toMap)
-      variables += (key -> context.getVariableMap.mapValues(Value(_)).toMap)
+      flows += (key -> context.getTagList.asScala.map(e => e.getReference.getName -> e).toMap)
+      choices += (key -> context.getChoiceList.asScala.map(e => e.getReference.getName -> e).toMap)
+      variables += (key -> context.getVariableList.asScala.map(e => e.getReference.getName -> e).toMap)
       dependencyFlows += (key -> context.getDependencyFlowList.toSet)
     }
 
     def toBackward(key: LogTriggerKey): BackwardContext = {
-      val builder = BackwardContext.newBuilder()
+      BackwardContext.newBuilder()
         .setTopicName(key.topicName)
         .setLogId(key.logId)
-        .setEventId(key.eventId)
-        .putAllVariable(variables.getOrElse(key, Map()).mapValues(_.as[FlowValue]))
-      val chooses = choices.getOrElse(key, Map.empty)
-        .mapValues(c => Choose.newBuilder().addAllChoice(c).build())
-      builder.putAllChoice(chooses)
-        .putAllTag(flows.getOrElse(key, Nil).toMap.mapValues(Value(_).as[FlowValue]).asJava)
+        .addAllChoice(choices.getOrElse(key, Map()).values.asJava)
+        .addAllTag(flows.getOrElse(key, Map()).values.asJava)
+        .addAllVariable(variables.getOrElse(key, Map()).values.asJava)
         .addAllDependencyFlow(dependencyFlows.getOrElse(key, Set()).asJava)
-      builder.build()
+        .build()
     }
 
     def toTopic(key: LogTriggerKey, topic: Flow.Topic): FlowInstance.Topic = {
-      val namingMap = topic.tagFields.map(r => (r.flow, r.name)).toMap
+      val flowTagMap = topic.tagFields.map(r => (r.flow, r.name)).toMap
       val builder = FlowInstance.Topic.newBuilder()
         .setTraceId(traceId)
         .setTopicName(key.topicName)
         .setLogId(key.logId.substring(1))
-        .setTimestamp(System.currentTimeMillis())
+        .setLogTimestamp(System.currentTimeMillis())
 
-      // 只记录收集到的字段, 未收集到的字段不记录
-      val variableFields = variables.getOrElse(key, Map())
-      val choiceFields = choices.getOrElse(key, Map()).mapValues(Value(_))
-      val triggeredTags = flows.getOrElse(key, Nil).map(r => (r._1, Value(true))).toMap
-      val unTriggeredTags = dependencyFlows.getOrElse(key, Set()).map(r => (namingMap(r), Value(false))).toMap
-      builder.putAllField(
-        (variableFields ++ choiceFields ++ triggeredTags ++ unTriggeredTags).mapValues(_.as[FlowValue])
-      ).build()
+      val variableFields = variables.getOrElse(key, Map()).mapValues(v => Value(v.getValue))
+      val choiceFields = choices.getOrElse(key, Map()).mapValues(v => Value(v.getValue))
+      val tagFields = flows.getOrElse(key, Map()).mapValues(v => Value(v.getValue))
+      val unTriggeredTags = dependencyFlows.getOrElse(key, Set()).map(r => (flowTagMap(r), Value(false))).toMap
+      val fields = (variableFields ++ choiceFields ++ tagFields ++ unTriggeredTags).mapValues(_.as[FlowValue])
+      builder.putAllField(fields)
+      if (topic.detailed) {
+        val details = (variables.getOrElse(key, Map()) ++ choices.getOrElse(key, Map()) ++
+          flows.getOrElse(key, Nil).toMap).mapValues(v => {
+          Value(v.getReference.toBuilder.clearName()).as[ValueDict]
+            .updated("timestamp", Value(v.getTimestamp)).as[FlowValue]
+        }) ++ dependencyFlows.getOrElse(key, Set()).map(flowName => {
+          val tagName = flowTagMap(flowName)
+          tagName -> Value(Map("flow_name" -> Value(flowName))).as[FlowValue]
+        }).toMap
+        builder.putAllDetail(details)
+      }
+      builder.build()
     }
   }
 
@@ -925,7 +933,7 @@ class FlowInterpreter(
         Trace.variables.get(tokenValue) match {
           case Some(t) =>
             val tokenContext = TokenContext.parseFrom(t.getValue.getBinary)
-            Log.tokenContext += (tokenValue -> tokenContext)
+            OriginalLog.tokenContext += (tokenValue -> tokenContext)
             val args = tokenContext.getArgumentMap.asScala.toMap.mapValues(Value(_))
             done(Value(args))
           case None =>
@@ -952,7 +960,7 @@ class FlowInterpreter(
     override protected def execute(): Dependencies = {
       if (Trace.load.isCompleted) {
         // 1.load backward context by trigger from event and token context
-        for (trigger <- event.getTriggerList ++ Log.tokenContext.values.map(_.getTrigger)) {
+        for (trigger <- event.getTriggerList ++ OriginalLog.tokenContext.values.map(_.getTrigger)) {
           val logId = if (trigger.getLogId.startsWith("&")) {
             trigger.getLogId
           } else {
@@ -969,7 +977,7 @@ class FlowInterpreter(
         if (event.hasForward) ForwardLog.addContext(event.getForward)
 
         // 2.2 forward context from callback timeout event
-        for (token <- Log.callbackTokens) {
+        for (token <- OriginalLog.callbackTokens) {
           val tokenValue = if (token.startsWith("#")) token else "#" + token
           Trace.variables.get(tokenValue) match {
             case Some(t) => {
@@ -1078,7 +1086,7 @@ class FlowInterpreter(
 
     def logAssign(node: Variable, value: Value): Unit = {
       if (isTopicLogEnabled && procedure.logDeps.contains(name)) {
-        Log.addVariable(Log.VariableKey(name, flow), procedure.scopes, value)
+        OriginalLog.addVariable(OriginalLog.VariableKey(name, flow), procedure.scopes, value)
       }
 
       if (isFlowLogDetailed && !name.startsWith("-") && !node.isTransient) {

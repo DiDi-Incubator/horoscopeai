@@ -138,13 +138,8 @@ class ChoreographySuite extends ExecutorSuiteHelper {
   }
 
   def run(event: FlowEvent)(f: FlowInstance => Unit): Unit = {
-    try {
-      whenReady(executor.execute(event)) { instance =>
-        f(instance)
-      }
-    } catch {
-      case t: Throwable =>
-        println("run error" ,t.getMessage)
+    whenReady(executor.execute(event)) { instance =>
+      f(instance)
     }
   }
 
@@ -198,7 +193,7 @@ class ChoreographySuite extends ExecutorSuiteHelper {
       schedule = instance.getSchedule(0)
       // topic1 in forward state
       instance("""schedule[0].forward.topic_name """).as[String] shouldBe "topic1"
-      instance("""schedule[0].forward.variable.v_input""").as[Int] shouldBe -1
+      // instance("""schedule[0].forward.variable.v_input""").as[Int] shouldBe -1
       instance("""schedule[0].forward.tag.length()""").as[Int] should be > 0
 
       // topic2 in backward state

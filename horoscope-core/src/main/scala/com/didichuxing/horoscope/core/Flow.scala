@@ -91,7 +91,7 @@ object Flow {
           val variables = conf.fields.map(v =>
             TopicFiled(v.name, v.`type`, v.expression.map(Expression(_)), v.flow, conf.topic, v.isForward)
           )
-          conf.topic -> Topic(conf.topic, conf.flow, variables)
+          conf.topic -> Topic(conf.topic, conf.flow, variables, conf.detailed)
         }.toMap
       }
 
@@ -211,7 +211,7 @@ object Flow {
     override val optDeps: Set[Node] = Set.empty
   }
 
-  case class Topic(name: String, flow: String, fields: Seq[TopicFiled]) {
+  case class Topic(name: String, flow: String, fields: Seq[TopicFiled], detailed: Boolean = false) {
     val variableFields: Seq[TopicFiled] = fields.filter(_.`type` == "variable")
     val choiceFields: Seq[TopicFiled] = fields.filter(_.`type` == "choice")
     val tagFields: Seq[TopicFiled] = fields.filter(_.`type` == "tag")

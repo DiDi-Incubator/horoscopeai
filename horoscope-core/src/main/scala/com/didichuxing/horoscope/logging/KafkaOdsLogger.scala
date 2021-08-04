@@ -25,11 +25,11 @@ class KafkaOdsLogger(config: Config) extends OdsLogger with LogHelper with Loggi
   assert(topic.size > 0, "topic is null")
   info(("msg", "KafkaOdsLogger started"))
 
-  private val buriedPointLogger = new KafkaBuriedPointLogger(config)
+  private val topicLogger = new TopicLogger(config)
 
   override def log(flowInstance: FlowInstance): Unit = {
     try {
-      buriedPointLogger.log(flowInstance)
+      topicLogger.log(flowInstance)
       val transLog = Bytes.wrap(flowInstance.toByteArray)
       val record = new ProducerRecord[String, Bytes](topic, null,
         System.currentTimeMillis(),

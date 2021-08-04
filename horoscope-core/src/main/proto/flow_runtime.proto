@@ -64,7 +64,7 @@ message ValueReference {
     // for temp variable: -argument_name->variable_name
     required string name = 2;
 
-    required string event_id = 1;
+    optional string event_id = 1;
     repeated string scope = 3;
     optional string flow_name = 4;
 }
@@ -111,8 +111,9 @@ message FlowInstance {
         required string log_id = 1;
         required string topic_name = 2;
         optional string trace_id = 3;
-        optional int64 timestamp = 4;
+        optional int64 log_timestamp = 4;
         map<string, FlowValue> field = 5;
+        map<string, FlowValue> detail = 6;
     }
 
     optional string flow_id = 1;
@@ -133,10 +134,7 @@ message FlowInstance {
 message TraceVariable {
     required FlowValue value = 1;
     optional ValueReference reference = 2;
-}
-
-message Choose {
-    repeated string choice = 1;
+    optional int64 timestamp = 3;
 }
 
 message TraceContext {
@@ -145,19 +143,18 @@ message TraceContext {
 
 message ForwardContext {
     required string topic_name = 1;           // topic
-    map<string, FlowValue> variable = 2;      // name -> variable
-    map<string, Choose> choice = 3;           // name -> choice
-    map<string, FlowValue> tag = 4;           // name -> flow
+    repeated TraceVariable variable = 2;
+    repeated TraceVariable choice = 3;
+    repeated TraceVariable tag = 4;
 }
 
 message BackwardContext {
     required string log_id = 1;              // &xxx
     required string topic_name = 2;
     repeated string dependency_flow = 3;
-    map<string, FlowValue> variable = 4;     // name -> variable
-    map<string, Choose> choice = 5;          // name -> choice
-    map<string, FlowValue> tag = 6;          // name -> flow
-    optional string event_id = 7;            // key flow event_id
+    repeated TraceVariable variable = 4;
+    repeated TraceVariable choice = 5;
+    repeated TraceVariable tag = 6;
 }
 
 message LogTrigger {

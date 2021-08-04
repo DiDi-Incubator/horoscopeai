@@ -32,7 +32,9 @@ object FlowConf {
     new FlowConf(logs, subscriptions, experiments, callbacks)
   }
 
-  case class LogConf(topic: String, enabled: Boolean, flow: String, fields: Seq[LogField]) {
+  case class LogConf(topic: String, enabled: Boolean, flow: String, fields: Seq[LogField],
+    detailed: Boolean = false
+  ) {
     def expressions: Map[String, Seq[String]] = {
       val result = fields.map(e =>
         (e.flow, e.expression)).groupBy(_._1)
