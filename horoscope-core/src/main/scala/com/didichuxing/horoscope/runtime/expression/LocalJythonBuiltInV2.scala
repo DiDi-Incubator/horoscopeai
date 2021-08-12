@@ -156,3 +156,10 @@ class LocalJythonBuiltInV2(fileStore: FileStore, url: String = "") extends Built
     )
   }
 }
+
+object LocalJythonBuiltInV2 {
+  val interpreter: PythonInterpreter = PythonInterpreter.threadLocalStateInterpreter(null)
+  def checkJythonSyntax(content: String): Unit = {
+    interpreter.exec(content)
+  }
+}

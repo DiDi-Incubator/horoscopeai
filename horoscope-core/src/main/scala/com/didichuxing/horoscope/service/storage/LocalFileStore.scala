@@ -9,11 +9,10 @@ package com.didichuxing.horoscope.service.storage
 import com.didichuxing.horoscope.core.FlowDslMessage.CompositorDef
 import com.didichuxing.horoscope.core.{Compositor, FileStore, Flow}
 import com.didichuxing.horoscope.dsl.FlowCompiler
-import com.didichuxing.horoscope.runtime.expression.{BuiltIn, SimpleBuiltIn}
+import com.didichuxing.horoscope.runtime.expression.{BuiltIn, LocalJythonBuiltInV2, SimpleBuiltIn}
 import com.didichuxing.horoscope.runtime.{Value, ValueDict}
 import com.didichuxing.horoscope.util.Logging
 import com.typesafe.config.Config
-
 import java.io.{BufferedWriter, File, IOException}
 import java.nio.charset.Charset
 import java.nio.file._
@@ -111,6 +110,8 @@ class LocalFileStore(config: Config) extends FileStore with Logging {
     try {
       if (path.endsWith(".flow")) {
         require(path.endsWith(checkSyntax(content).name + ".flow"), "wrong flow name in header")
+      } else if (path.endsWith(".py")) {
+        LocalJythonBuiltInV2.checkJythonSyntax(content)
       }
       writer = Files.newBufferedWriter(target, Charset.forName("UTF-8"))
       writer.write(content)

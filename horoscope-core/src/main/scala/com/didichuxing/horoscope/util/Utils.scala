@@ -16,8 +16,6 @@ import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.server.StandardRoute
 import akka.util.Timeout
 import akka.pattern.ask
-import com.didichuxing.horoscope.core.FlowRuntimeMessage
-import com.didichuxing.horoscope.core.FlowRuntimeMessage.{FlowInstanceOrBuilder, FlowValue}
 import com.didichuxing.horoscope.runtime.{Binary, NumberValue, Text, Value}
 import com.typesafe.config.Config
 import org.apache.hadoop.hbase.util.Bytes
