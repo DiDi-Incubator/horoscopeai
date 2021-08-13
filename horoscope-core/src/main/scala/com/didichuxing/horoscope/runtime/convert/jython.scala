@@ -64,6 +64,8 @@ object JythonConvertible {
         new PyFloat(v.floatValue())
       case NumberValue(v) if v.isDecimalDouble =>
         new PyFloat(v.doubleValue())
+      case NumberValue(v) => // to match infinity double
+        new PyFloat(v.doubleValue())
       case v: ValueList =>
         val pyList = new PyList()
         v.iterator.foreach { case (i, v) => pyList.add(i, value2PyObject(v)) }
