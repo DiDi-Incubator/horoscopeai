@@ -190,12 +190,14 @@ class ZookeeperConfigStore(curator: CuratorFramework) extends ConfigStore with T
         },
         put {
           entity(as[String]) { text =>
+            info(s"got config to update, ${text}")
             if (!text.isInstanceOf[String] || parseFull(text).isEmpty) {
               complete(HttpResponse(StatusCodes.BadRequest, entity = ""))
             } else {
               Utils.run {
                 configChecker.check(configName, configType, ConfigFactory.parseString(text))
                 update(s"$configType/$configName", text)
+                info(s"config update successfully, ${text}")
                 complete(HttpResponse(status = StatusCodes.OK, entity = "successfully updated"))
               }
             }

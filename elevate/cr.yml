@@ -1,6 +1,6 @@
 strategy: default
 owners: wenxiang
-reviewers: weilunkai,chaiyi,liangguorong,wenxiang,huchengyi
+reviewers: weilunkai,chaiyi,liangguorong,wenxiang,huchengyi,liuguangyao
 force: master
 refer: OE
 exceptSelfAccept: true

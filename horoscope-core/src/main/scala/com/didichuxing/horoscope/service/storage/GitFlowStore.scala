@@ -183,7 +183,7 @@ class GitFlowStore(
   private def checkExpression(expressions: Map[String, Seq[String]]): Boolean = {
     for ((flowName, exprs) <- expressions) {
       val flow = getFlow(flowName)
-      val flowVariables = flow.variables.keySet ++ flow.arguments.keySet.map("@" + _) ++ "@event_id"
+      val flowVariables = flow.variables.keySet ++ flow.arguments.keySet.map("@" + _) ++ Set("@event_id")
       val refs = exprs.flatMap(Expression(_).references.map(_.name))
       val inValid = refs.find(!flowVariables.contains(_))
       assert(inValid.isEmpty, s"variable ${inValid.get} does not exist in flow ${flow.name}")
