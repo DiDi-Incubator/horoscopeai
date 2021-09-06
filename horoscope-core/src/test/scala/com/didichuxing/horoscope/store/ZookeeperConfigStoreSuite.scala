@@ -4,7 +4,7 @@ import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.testkit.ScalatestRouteTest
 import com.didichuxing.horoscope.core.ConfigChangeListener
 import com.didichuxing.horoscope.service.storage.{ZookeeperConfigStore, ZookeeperFlowStore}
-import com.typesafe.config.Config
+import com.typesafe.config.{Config}
 import org.apache.curator.framework.recipes.cache.TreeCache
 import org.apache.curator.framework.{CuratorFramework, CuratorFrameworkFactory}
 import org.apache.curator.retry.RetryForever
@@ -13,10 +13,7 @@ import org.apache.zookeeper.CreateMode
 import org.apache.zookeeper.data.Stat
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.{BeforeAndAfter, FunSuite, Matchers, stats}
-import spray.json.JsValue
 
-import java.util.UUID
-import java.util.concurrent.Executors
 import scala.collection.JavaConverters.asScalaBufferConverter
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
@@ -35,9 +32,8 @@ class ZookeeperConfigStoreSuite extends FunSuite
     .build()
 
   def newStore(): ZookeeperConfigStore = {
-    new ZookeeperConfigStore(curator.usingNamespace("config"))
+    new ZookeeperConfigStore(curator.usingNamespace("config"), null)
   }
-
 
   override def beforeAll(): Unit = {
     zookeeper.start()

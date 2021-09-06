@@ -7,7 +7,8 @@ import akka.http.scaladsl.server.Directives.entity
 import akka.http.scaladsl.server.Route
 import com.didichuxing.horoscope.core.SourceStore
 import com.didichuxing.horoscope.service.resource.ZkClient
-import com.didichuxing.horoscope.util.{Logging, SystemLog}
+import com.didichuxing.horoscope.util.Constants.ZK_SOURCE_PATH
+import com.didichuxing.horoscope.util.{Logging, SystemLog, Utils}
 import com.typesafe.config._
 import org.apache.curator.framework.CuratorFramework
 import org.apache.curator.framework.recipes.cache.PathChildrenCacheEvent.Type
@@ -88,6 +89,18 @@ class ZkSourceStore(zkClient: ZkClient, sourceListener: SourceListener)
     }
   }
 
+  private def cloneSource(sourceName: String, targetCluster: String): Boolean = {
+    // to keep source disabled
+    val source = getSource(sourceName).withValue("parameter.disabled", ConfigValueFactory.fromAnyRef(true))
+    assert(sourceName == source.getString("source-name"), "source-name is wrong")
+    val targetPath = s"/${targetCluster}/$ZK_SOURCE_PATH/$sourceName"
+    if (zkClient.exist(targetPath)) {
+      throw new IllegalArgumentException("source config exists")
+    }
+    zkClient.create(targetPath)
+    zkClient.setData(targetPath, source)
+  }
+
   //scalastyle:off
   override def api: Route = {
     import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
@@ -130,6 +143,7 @@ class ZkSourceStore(zkClient: ZkClient, sourceListener: SourceListener)
         //启动/暂停泛源
         path(Segment / "enabled") { sourceName =>
           entity(as[String]) { enabled =>
+            info(("msg", s"enable/disable source, ${sourceName}, ${enabled}"))
             complete(
               Try {
                 val disabled = !Try(enabled.toBoolean).getOrElse(false)
@@ -145,6 +159,7 @@ class ZkSourceStore(zkClient: ZkClient, sourceListener: SourceListener)
         //启动/暂停泛源
         path(Segment / "concurrency") { sourceName =>
           entity(as[String]) { concurrency =>
+            info(("msg", s"update source concurrency"), ("source", sourceName), ("concurrency", concurrency))
             complete(
               Try {
                 val permits = Try(concurrency.toInt).getOrElse(50)
@@ -153,6 +168,20 @@ class ZkSourceStore(zkClient: ZkClient, sourceListener: SourceListener)
                 StatusCodes.OK
               }
             )
+          }
+        }
+      },
+      post {
+        path(Segment / "clone") { sourceName =>
+          entity(as[String]) { cluster =>
+            Utils.run {
+              val success = cloneSource(sourceName, cluster)
+              if (success) {
+                complete(HttpResponse(StatusCodes.OK))
+              } else {
+                complete(HttpResponse(StatusCodes.BadRequest, entity = "clone failed"))
+              }
+            }
           }
         }
       },
@@ -167,10 +196,12 @@ class ZkSourceStore(zkClient: ZkClient, sourceListener: SourceListener)
         //添加泛源 post
         entity(as[String]) { content =>
           SystemLog.create()
+          info(("msg", s"got source config to update, ${content}"))
           val config = ConfigFactory.parseString(content)
           complete(
             try {
               putSource(config)
+              info(("msg", s"source config update successfully, ${content}"))
               StatusCodes.OK
             } catch {
               case _: ConfigException =>

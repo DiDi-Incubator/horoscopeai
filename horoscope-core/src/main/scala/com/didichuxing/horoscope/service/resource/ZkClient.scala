@@ -52,6 +52,10 @@ class ZkClient(config: Config) {
     s"$clusterPath/$ZK_CLUSTER_PATH"
   }
 
+  def getConfigPath(): String = {
+    s"${clusterPath}/${ZK_CONF_PATH}"
+  }
+
   def flowsCurator(): CuratorFramework = {
     curator.usingNamespace(s"$namespace$clusterPath/$ZK_FLOW_PATH")
   }

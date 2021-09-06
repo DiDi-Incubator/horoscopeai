@@ -4,7 +4,7 @@ import akka.http.scaladsl.model.{HttpResponse, StatusCodes}
 import akka.http.scaladsl.server.{Route, StandardRoute}
 import com.didichuxing.horoscope.core.{ConfigChangeListener, ConfigChecker, ConfigStore}
 import com.didichuxing.horoscope.util.{FlowConfParser, Logging, Utils}
-import com.typesafe.config.{Config, ConfigFactory}
+import com.typesafe.config.{Config, ConfigFactory, ConfigRenderOptions, ConfigValueFactory}
 import org.apache.curator.framework.CuratorFramework
 import org.apache.curator.framework.recipes.cache._
 import org.apache.zookeeper.CreateMode
@@ -12,12 +12,16 @@ import org.apache.zookeeper.data.Stat
 import spray.json.{JsValue, _}
 import java.util.concurrent.{Executors, Semaphore}
 
+import com.didichuxing.horoscope.service.resource.ZkClient
+import com.didichuxing.horoscope.util.Constants.ZK_CONF_PATH
+
 import scala.collection.JavaConverters.asScalaBufferConverter
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.concurrent.ExecutionContext
 import scala.util.parsing.json.JSON._
 
-class ZookeeperConfigStore(curator: CuratorFramework) extends ConfigStore with TreeCacheListener with Logging {
+class ZookeeperConfigStore(curator: CuratorFramework,
+  zkClient: ZkClient) extends ConfigStore with TreeCacheListener with Logging {
 
   import akka.http.scaladsl.server.Directives._
   import ZookeeperConfigStore._
@@ -84,7 +88,8 @@ class ZookeeperConfigStore(curator: CuratorFramework) extends ConfigStore with T
     import akka.http.scaladsl.server.Directives._
     concat(
       pathPrefix("configs")(configListRoutes),
-      pathPrefix("config")(configRoutes)
+      pathPrefix("config")(configRoutes),
+      pathPrefix("config")(configCloneRoute)
     )
   }
 
@@ -118,6 +123,25 @@ class ZookeeperConfigStore(curator: CuratorFramework) extends ConfigStore with T
       }
     } else {
       null
+    }
+  }
+
+  private def cloneConfig(configType: String, configName: String, targetCluster: String): Boolean = {
+    val sourcePath = s"${zkClient.getConfigPath()}/${configType}/${configName}"
+    val targetPath = s"/${targetCluster}/${ZK_CONF_PATH}/${configType}/${configName}"
+    if (!zkClient.exist(sourcePath)) {
+      throw new IllegalArgumentException("source config doesn't exist")
+    } else if (zkClient.exist(targetPath)) {
+      throw new IllegalArgumentException("target config exists")
+    } else {
+      val data = new String(curator.getData.forPath(getFullPath(configType, configName)))
+      // to keep config disabled
+      val config = ConfigFactory.parseString(data).withValue("enabled", ConfigValueFactory.fromAnyRef(false))
+      val configContent = config.root().render(ConfigRenderOptions.concise())
+      info(("msg", s"prepare to copy config: ${configType}/${configName} to cluster: ${targetCluster}, " +
+        s"content: ${configContent}"))
+      zkClient.create(targetPath)
+      zkClient.setData(targetPath, config)
     }
   }
 
@@ -217,6 +241,27 @@ class ZookeeperConfigStore(curator: CuratorFramework) extends ConfigStore with T
           }
         }
       )
+    }
+  }
+
+  val configCloneRoute: Route = {
+    post {
+      path(Segment / Segment / "clone") { (configType, configName) =>
+        entity(as[String]) { cluster =>
+          if (configTypeValid(configType)) {
+            Utils.run {
+              val success = cloneConfig(configType, configName, cluster)
+              if (success) {
+                complete(HttpResponse(StatusCodes.OK))
+              } else {
+                complete(HttpResponse(StatusCodes.BadRequest, entity = "clone failed"))
+              }
+            }
+          } else {
+            complete(HttpResponse(StatusCodes.BadRequest, entity = "invalid config type"))
+          }
+        }
+      }
     }
   }
 
