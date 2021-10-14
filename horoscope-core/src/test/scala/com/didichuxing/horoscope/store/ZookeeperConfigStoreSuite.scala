@@ -1,11 +1,9 @@
 package com.didichuxing.horoscope.store
 
-import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.testkit.ScalatestRouteTest
 import com.didichuxing.horoscope.core.ConfigChangeListener
 import com.didichuxing.horoscope.service.storage.{ZookeeperConfigStore, ZookeeperFlowStore}
-import com.typesafe.config.{Config}
-import org.apache.curator.framework.recipes.cache.TreeCache
+import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.curator.framework.{CuratorFramework, CuratorFrameworkFactory}
 import org.apache.curator.retry.RetryForever
 import org.apache.curator.test.TestingServer
@@ -16,7 +14,7 @@ import org.scalatest.{BeforeAndAfter, FunSuite, Matchers, stats}
 
 import scala.collection.JavaConverters.asScalaBufferConverter
 import scala.collection.mutable
-import scala.collection.mutable.ListBuffer
+import scala.util.parsing.json.JSONArray
 
 class ZookeeperConfigStoreSuite extends FunSuite
   with Matchers
@@ -24,6 +22,10 @@ class ZookeeperConfigStoreSuite extends FunSuite
   with BeforeAndAfter
   with ScalatestRouteTest {
   import ZookeeperConfigStore._
+  import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
+  import akka.http.scaladsl.model._
+  import spray.json._
+  import DefaultJsonProtocol._
 
   val zookeeper: TestingServer = new TestingServer(false)
   val curator: CuratorFramework = CuratorFrameworkFactory.builder()
@@ -32,7 +34,8 @@ class ZookeeperConfigStoreSuite extends FunSuite
     .build()
 
   def newStore(): ZookeeperConfigStore = {
-    new ZookeeperConfigStore(curator.usingNamespace("config"), null)
+    val store = new ZookeeperConfigStore(curator.usingNamespace("config"), null)
+    store
   }
 
   override def beforeAll(): Unit = {
@@ -63,18 +66,6 @@ class ZookeeperConfigStoreSuite extends FunSuite
   test("try to get by method - empty") {
     val store = newStore()
     an[IllegalArgumentException] should be thrownBy store.getConf("nothing", LOG_TYPE)
-  }
-
-  test("get config list with no folder exist") {
-    val store = newStore()
-    var stat: Stat = curator.checkExists().forPath("/config/log")
-    (stat == null) shouldBe(true)
-
-    val s = store.getChildrenContent("log")
-    s shouldBe("""{"log-conf" : []}""")
-
-    stat = curator.checkExists().forPath("/config/log")
-    (stat == null) shouldBe(false)
   }
 
   test("get config list through api") {
@@ -153,6 +144,70 @@ class ZookeeperConfigStoreSuite extends FunSuite
     putByCurator()
     Thread.sleep(1000)
     listener.messages should contain("config has changed === I will update my config")
+  }
+
+  test("version conf api") {
+    val store = newStore()
+    val data =
+      """
+        |{
+        |  "name": "test",
+        |  "data": [],
+        |  "version": {"modify_user": "test", "modify_time": ""}
+        |}
+        |""".stripMargin
+
+    Put("/config/log/test", HttpEntity(ContentTypes.`application/json`, data)) ~> store.api ~> check {
+      status shouldBe StatusCodes.OK
+    }
+
+    Get("/config/log/test") ~> store.api ~> check {
+      ConfigFactory.parseString(entityAs[String]).getString("version.id") shouldBe "1"
+      info(entityAs[String])
+    }
+
+    Put("/config/log/test", HttpEntity(ContentTypes.`application/json`, data)) ~> store.api ~> check {
+      status shouldBe StatusCodes.OK
+    }
+
+    Get("/config/log/test") ~> store.api ~> check {
+      ConfigFactory.parseString(entityAs[String]).getString("version.id") shouldBe "2"
+      info(entityAs[String])
+    }
+
+    val rollbackData =
+      """
+        |{
+        | "rollback_version": 1,
+        | "modify_user": "nobody",
+        | "modify_time": "now"
+        |}
+        |""".stripMargin
+
+    Post("/config/log/test/rollback", HttpEntity(ContentTypes.`application/json`, rollbackData)) ~> store.api~> check {
+      status shouldBe StatusCodes.OK
+    }
+
+    Get("/config/log/test") ~> store.api ~> check {
+      ConfigFactory.parseString(entityAs[String]).getString("version.id") shouldBe "3"
+      info(s"conf test after rollback: ${entityAs[String]}")
+    }
+
+    Get("/config/log/test/versions") ~> store.api ~> check {
+      status shouldBe StatusCodes.OK
+      info(s"versions, ${entityAs[String]}")
+    }
+
+    Get("/config/log/test/3") ~> store.api ~> check {
+      info(s"version 3, ${entityAs[String]}")
+    }
+
+    Get("/configs/log") ~> store.api ~> check {
+      status shouldBe StatusCodes.OK
+      info(s"config list, ${entityAs[String]}")
+    }
+
+    Thread.sleep(1000)
   }
 }
 

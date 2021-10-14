@@ -197,13 +197,13 @@ object Utils extends Logging {
     slot
   }
 
-  def run(block: => Unit): StandardRoute = {
+  def run(block: => StandardRoute): StandardRoute = {
     import akka.http.scaladsl.server.Directives._
     try {
       block
-      complete(StatusCodes.OK)
     } catch {
       case e: Throwable =>
+        e.printStackTrace()
         complete(StatusCodes.NotAcceptable, e.getMessage)
     }
   }

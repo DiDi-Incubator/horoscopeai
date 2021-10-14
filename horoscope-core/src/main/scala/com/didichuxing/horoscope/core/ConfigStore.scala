@@ -21,5 +21,6 @@ trait ConfigChangeListener {
 }
 
 trait ConfigChecker {
+  @throws(classOf[AssertionError])
   def check(name: String, configType: String, conf: Config): Boolean
 }

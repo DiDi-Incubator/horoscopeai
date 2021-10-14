@@ -3,8 +3,8 @@ package com.didichuxing.horoscope.service.storage
 import akka.http.scaladsl.model.{HttpResponse, StatusCodes}
 import akka.http.scaladsl.server.{Route, StandardRoute}
 import com.didichuxing.horoscope.core.{ConfigChangeListener, ConfigChecker, ConfigStore}
-import com.didichuxing.horoscope.util.{FlowConfParser, Logging, Utils}
-import com.typesafe.config.{Config, ConfigFactory, ConfigRenderOptions, ConfigValueFactory}
+import com.didichuxing.horoscope.util.{DistributeIDGenerator, FlowConfParser, Logging, Utils}
+import com.typesafe.config.{Config, ConfigFactory, ConfigRenderOptions, ConfigValue, ConfigValueFactory}
 import org.apache.curator.framework.CuratorFramework
 import org.apache.curator.framework.recipes.cache._
 import org.apache.zookeeper.CreateMode
@@ -19,12 +19,31 @@ import scala.collection.JavaConverters.asScalaBufferConverter
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.concurrent.ExecutionContext
 import scala.util.parsing.json.JSON._
+import scala.util.parsing.json.{JSONArray, JSONObject}
+import scala.collection.JavaConverters._
+import scala.collection.JavaConversions._
+
+/**
+ *  ZK上编排配置节点组织结构
+ *  config
+ *    |-- log: 埋点配置
+ *    |    |-- config-data
+ *    |-- subscription: 订阅配置
+ *    |-- experiment: 实验配置
+ *    |-- callback: 回调配置
+ *    |-- version: 历史版本配置
+ *    |      |-- id: 版本id自增生成器
+ *    |      |-- config-type
+ *    |      |         |-- config-name
+ *    |      |         |        |-- version-id: 某版本的配置数据
+ */
 
 class ZookeeperConfigStore(curator: CuratorFramework,
   zkClient: ZkClient) extends ConfigStore with TreeCacheListener with Logging {
 
   import akka.http.scaladsl.server.Directives._
   import ZookeeperConfigStore._
+  import JsonSupport._
 
   private val configChangeListeners = ArrayBuffer[ConfigChangeListener]()
 
@@ -36,6 +55,9 @@ class ZookeeperConfigStore(curator: CuratorFramework,
 
   private val isInitialized: Semaphore = new Semaphore(0)
 
+  private val versionIdGenerator = new DistributeIDGenerator("/version/id", curator)
+
+  // register cache listener
   private val tree: TreeCache = {
     val cache = TreeCache.newBuilder(curator, "/")
       .setCreateParentNodes(true)
@@ -89,13 +111,17 @@ class ZookeeperConfigStore(curator: CuratorFramework,
     concat(
       pathPrefix("configs")(configListRoutes),
       pathPrefix("config")(configRoutes),
-      pathPrefix("config")(configCloneRoute)
+      pathPrefix("config")(configCloneRoute),
+      pathPrefix("config")(configRollbackRoute),
+      pathPrefix("config")(configVersionRoute)
     )
   }
 
   private def getFullPath(configType: String, configName: String): String = s"/$configType/$configName"
 
-  private def getFullPath(path: String): String = s"/$path"
+  private def getFullPath(path: String): String = {
+    if (path.startsWith("/")) path else s"/$path"
+  }
 
   /** update operation to ZK */
   private def update(path: String, text: String): Unit = {
@@ -108,6 +134,15 @@ class ZookeeperConfigStore(curator: CuratorFramework,
     } else {
       curator.setData()
         .forPath(fullPath, text.getBytes("UTF-8"))
+    }
+  }
+
+  /** delete operation to ZK */
+  private def zkDelete(path: String): Unit = {
+    val fullPath = getFullPath(path)
+    val stat = curator.checkExists().forPath(fullPath)
+    if (stat != null) {
+      curator.delete().deletingChildrenIfNeeded().forPath(fullPath)
     }
   }
 
@@ -136,7 +171,8 @@ class ZookeeperConfigStore(curator: CuratorFramework,
     } else {
       val data = new String(curator.getData.forPath(getFullPath(configType, configName)))
       // to keep config disabled
-      val config = ConfigFactory.parseString(data).withValue("enabled", ConfigValueFactory.fromAnyRef(false))
+      val config = ConfigFactory.parseString(data)
+        .withValue("enabled", ConfigValueFactory.fromAnyRef(false))
       val configContent = config.root().render(ConfigRenderOptions.concise())
       info(("msg", s"prepare to copy config: ${configType}/${configName} to cluster: ${targetCluster}, " +
         s"content: ${configContent}"))
@@ -152,13 +188,14 @@ class ZookeeperConfigStore(curator: CuratorFramework,
     if (stat != null) {
       ConfigFactory.parseString(new String(curator.getData.forPath(fullPath), "UTF-8"))
     } else {
-      throw new IllegalArgumentException("file not exist")
+      throw new IllegalArgumentException("zk node not exist")
     }
   }
 
   // @throws(classOf[IllegalArgumentException])
   private def getConfListByType(configType: String): List[Config] = {
-    createFolderIfNotExist(configType)
+    val configTypePath = getFullPath(configType)
+    createFolderIfNotExist(configTypePath)
     val result = ListBuffer[Config]()
     val fullPath = getFullPath(configType)
     val stat: Stat = curator.checkExists().forPath(fullPath)
@@ -175,15 +212,23 @@ class ZookeeperConfigStore(curator: CuratorFramework,
     }
   }
 
-
-
   val configListRoutes: Route = {
     concat(
       path(Segment) { configType =>
         get {
           if (configTypeValid(configType)) {
-            val contentList = getChildrenContent(configType)
-            complete(HttpResponse(StatusCodes.OK, entity = contentList))
+            val configTypePath = s"/${configType}"
+            createFolderIfNotExist(configTypePath)
+            val list = getChildrenContent(configTypePath)
+            val typeName = configType match {
+              case LOG_TYPE => "log-conf"
+              case SUBSCRIPTION_TYPE => "subscriptions"
+              case EXPERIMENT_TYPE => "experiments"
+              case CALLBACK_TYPE => "callbacks"
+            }
+            val sorted = list.sortBy(_.asJsObject.getFields("name").head.convertTo[String])
+            val data = JSONObject(Map(typeName -> JSONArray(sorted))).toString()
+            complete(HttpResponse(StatusCodes.OK, entity = data))
           } else {
             complete(HttpResponse(StatusCodes.BadRequest, entity = ""))
           }
@@ -196,48 +241,59 @@ class ZookeeperConfigStore(curator: CuratorFramework,
     path(Segment / Segment) { (configType, configName) =>
       concat(
         get {
-          if (configName.contains('/')) {
-            complete(HttpResponse(StatusCodes.BadRequest, entity = ""))
-          }
-          if (configTypeValid(configType)) {
-            createFolderIfNotExist(configType)
+          if (configTypeValid(configType) && !configName.contains('/')) {
+            val configTypePath = s"/$configType"
+            createFolderIfNotExist(configTypePath)
             val stat: Stat = curator.checkExists().forPath(getFullPath(configType, configName))
             if (stat == null) {
-              complete(HttpResponse(StatusCodes.BadRequest, entity = ""))
+              complete(HttpResponse(StatusCodes.BadRequest, entity = "config not exist"))
             } else {
               val configContent = new String(curator.getData.forPath(getFullPath(configType, configName)))
               complete(HttpResponse(StatusCodes.OK, entity = configContent))
             }
           } else {
-            complete(HttpResponse(StatusCodes.BadRequest, entity = ""))
+            complete(HttpResponse(StatusCodes.BadRequest, entity = "invalid params"))
           }
         },
         put {
           entity(as[String]) { text =>
             info(s"got config to update, ${text}")
             if (!text.isInstanceOf[String] || parseFull(text).isEmpty) {
-              complete(HttpResponse(StatusCodes.BadRequest, entity = ""))
+              complete(HttpResponse(StatusCodes.BadRequest, entity = "invalid conf data"))
             } else {
               Utils.run {
-                configChecker.check(configName, configType, ConfigFactory.parseString(text))
-                update(s"$configType/$configName", text)
-                info(s"config update successfully, ${text}")
+                val original = ConfigFactory.parseString(text)
+                if (configChecker != null) configChecker.check(configName, configType, original)
+                val newVersion = versionIdGenerator.nextId()
+                val newValue = original.withValue("version.id", newVersion.toConfigValue)
+                  .withValue("version.comment", "".toConfigValue)
+                  .root().render(ConfigRenderOptions.concise())
+                // update config data
+                update(s"/$configType/$configName", newValue)
+                // update config version data
+                update(s"/version/$configType/$configName/$newVersion", newValue)
+                info(s"config update successfully, ${newValue}")
                 complete(HttpResponse(status = StatusCodes.OK, entity = "successfully updated"))
               }
             }
           }
         },
         delete {
-          if (configTypeValid(configType)) {
-            val stat: Stat = curator.checkExists().forPath(getFullPath(configType, configName))
-            if (stat == null) {
-              complete(HttpResponse(StatusCodes.BadRequest, entity = ""))
+          Utils.run {
+            if (configTypeValid(configType)) {
+              val stat: Stat = curator.checkExists().forPath(getFullPath(configType, configName))
+              if (stat == null) {
+                complete(HttpResponse(status = StatusCodes.BadRequest, entity = ""))
+              } else {
+                // delete config data
+                zkDelete(getFullPath(configType, configName))
+                // delete config version data
+                zkDelete(s"/version/$configType/$configName")
+                complete(HttpResponse(status = StatusCodes.OK, entity = "successfully deleted"))
+              }
             } else {
-              curator.delete().deletingChildrenIfNeeded().forPath(getFullPath(configType, configName))
-              complete(HttpResponse(status = StatusCodes.OK, entity = "successfully deleted"))
+              complete(HttpResponse(status = StatusCodes.BadRequest, entity = ""))
             }
-          } else {
-            complete(HttpResponse(StatusCodes.BadRequest, entity = ""))
           }
         }
       )
@@ -265,31 +321,97 @@ class ZookeeperConfigStore(curator: CuratorFramework,
     }
   }
 
+  val configRollbackRoute: Route = {
+    post {
+      path(Segment / Segment / "rollback") { (configType, configName) =>
+        entity(as[JsValue]) { json =>
+          Utils.run {
+            json.asJsObject.getFields("rollback_version", "modify_time", "modify_user") match {
+              case Seq(JsNumber(rollbackVersion), JsString(modifyTime), JsString(modifyUser)) =>
+                val newVersion = versionIdGenerator.nextId()
+                val newValue = getVersionConf(configType, configName, rollbackVersion.longValue())
+                  .withValue("version",
+                    ConfigValueFactory.fromMap(
+                      Map("id" -> newVersion, "comment" -> s"rollback from version ${rollbackVersion}",
+                        "modify_time" -> modifyTime, "modify_user" -> modifyUser)))
+                  .root().render(ConfigRenderOptions.concise())
+                // update config data
+                update(s"/$configType/$configName", newValue)
+                // update version data
+                update(s"/version/$configType/$configName/$newVersion", newValue)
+                complete(HttpResponse(StatusCodes.OK))
+            }
+          }
+        }
+      }
+    }
+  }
+
+  val configVersionRoute: Route = {
+    concat(
+      get {
+        path(Segment / Segment / "versions") { (configType, configName) =>
+          Utils.run {
+            val exist = checkPathExist(s"/version/$configType/$configName")
+            if (exist) {
+              val list = getChildrenContent(s"/version/$configType/$configName")
+              val sorted = list.sortBy(
+                _.asJsObject.getFields("version").head.asJsObject
+                  .getFields("id").head.convertTo[Long]
+              )
+              val data = JSONArray(sorted).toString()
+              complete(HttpResponse(StatusCodes.OK, entity = data))
+            } else {
+              complete(HttpResponse(StatusCodes.BadRequest, entity = "conf not exist"))
+            }
+          }
+        }
+      },
+      get {
+        path(Segment / Segment / Segment) {
+          { (configType, configName, versionId) =>
+            Utils.run {
+              val exist = checkPathExist(s"/version/$configType/$configName")
+              if (exist) {
+                val path = s"/version/$configType/$configName/$versionId"
+                val config = getConfByPath(path)
+                val data = config.root().render(ConfigRenderOptions.concise())
+                complete(HttpResponse(StatusCodes.OK, entity = data))
+              } else {
+                complete(HttpResponse(StatusCodes.BadRequest, entity = "conf not exist"))
+              }
+            }
+          }
+        }
+      }
+    )
+  }
+
+  private def getVersionConf(configType: String, configName: String, version: Long): Config = {
+    getConfByPath(s"version/$configType/$configName/$version")
+  }
+
   private def configTypeValid(configType: String): Boolean = {
     configType == LOG_TYPE || configType == SUBSCRIPTION_TYPE || configType == EXPERIMENT_TYPE ||
       configType == CALLBACK_TYPE
   }
 
-  private def createFolderIfNotExist(configType: String): Unit = {
-    val fullPath = getFullPath(configType)
-    val stat: Stat = curator.checkExists().forPath(fullPath)
+  private def checkPathExist(path: String): Boolean = {
+    val stat: Stat = curator.checkExists().forPath(path)
+    stat != null
+  }
+
+  private def createFolderIfNotExist(path: String): Unit = {
+    val stat: Stat = curator.checkExists().forPath(path)
     if (stat == null) {
       curator.create().creatingParentsIfNeeded()
         .withMode(CreateMode.PERSISTENT)
-        .forPath(fullPath)
+        .forPath(path)
     }
   }
 
-  def getChildrenContent(configType: String): String = {
-    createFolderIfNotExist(configType)
-    val path = getFullPath(configType)
+  def getChildrenContent(path: String): List[JsValue] = {
     val list = curator.getChildren.forPath(path).asScala
-    val typeName = configType match {
-      case LOG_TYPE => "log-conf"
-      case SUBSCRIPTION_TYPE => "subscriptions"
-      case EXPERIMENT_TYPE => "experiments"
-      case CALLBACK_TYPE => "callbacks"
-    }
     val result = ListBuffer[JsValue]()
     list.foreach(x => {
       val item = read(s"$path/$x")
@@ -298,12 +420,7 @@ class ZookeeperConfigStore(curator: CuratorFramework,
         result.append(jsonAst)
       }
     })
-
-    val sortedList = result.sortBy(_.asJsObject.getFields("name").head.toString)
-    val map = Map(
-      typeName -> scala.util.parsing.json.JSONArray(sortedList.toList)
-    )
-    scala.util.parsing.json.JSONObject(map).toString()
+    result.result()
   }
 }
 
@@ -344,5 +461,11 @@ object ZookeeperConfigStore {
     val priorities = total.map(_.getInt("priority"))
     assert(priorities.toSet.size == priorities.length, s"duplicate experiment priority")
     // assert(trafficSum <= 100, s"traffic ratio sum of all enabled experiment exceed than 100%")
+  }
+
+  implicit class ConfigConverter(any: Any) {
+    def toConfigValue: ConfigValue = {
+      ConfigValueFactory.fromAnyRef(any)
+    }
   }
 }
