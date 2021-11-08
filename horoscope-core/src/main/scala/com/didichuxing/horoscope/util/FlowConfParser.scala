@@ -110,7 +110,7 @@ object FlowConfParser {
       val enabled = conf.getBoolean("enabled")
       val registerFlow = conf.getString("flow.register")
       val callbackFlow = conf.getString("flow.callback")
-      val timeoutFlow = Try(Some(conf.getString("flow.timeout"))).getOrElse(None)
+      val timeoutFlow = conf.getString("flow.timeout")
       val timeout = conf.getString("timeout")
       val token = conf.getString("token")
       val args = if (conf.hasPath(FLOW_ARGS)) {

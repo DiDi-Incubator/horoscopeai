@@ -205,7 +205,7 @@ object Flow {
   }
 
   case class Callback(scope: String, flow: String, token: Node, definition: CallbackConf)(
-    val args: Map[String, Node], val timeout: Duration, val timeoutFlow: Option[String]
+    val args: Map[String, Node], val timeout: Duration, val timeoutFlow: String
   ) extends Node {
     override val deps: Set[Node] = args.values.toSet ++ Set(token)
     override val optDeps: Set[Node] = Set.empty

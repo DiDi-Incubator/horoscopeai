@@ -65,6 +65,13 @@ class FlowGraph(vertices: Seq[FlowVertex], edges: Seq[Edge]) extends Logging {
 
   def hasPath(from: String, to: String): Boolean = getPath(from, to).nonEmpty
 
+  private val callbackDuals: Map[String, String] = {
+    edges.filter(_.`type` == "callback").map(r => (r.to, r.options("timeoutFlow"))).toMap ++
+      edges.filter(_.`type` == "callback").map(r => (r.options("timeoutFlow"), r.to)).toMap
+  }
+
+  def getDualFlow(flow: String): Option[String] = callbackDuals.get(flow)
+
   def toJson: String = {
     Value(
       Map("flows" -> Value(vertices),
@@ -113,8 +120,9 @@ object FlowGraph {
       Edge(flow, callback.flow, callback.scope, `type` = "callback",
         options = Map(
           "timeout" -> callback.timeout.toString,
-          "token" -> callback.definition.token) ++
-          callback.timeoutFlow.map("timeoutFlow" -> _)
+          "token" -> callback.definition.token,
+          "timeoutFlow" -> callback.timeoutFlow
+        )
       )
     }
   }

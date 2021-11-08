@@ -192,9 +192,10 @@ class ChoreographySuite extends ExecutorSuiteHelper {
     run(event) { instance =>
       schedule = instance.getSchedule(0)
       // topic1 in forward state
-      instance("""schedule[0].forward.topic_name """).as[String] shouldBe "topic1"
+      instance("""schedule[0].forward.length()""").as[Int] should be > 0
+      instance("""schedule[0].forward[1].topic_name """).as[String] shouldBe "topic1"
       // instance("""schedule[0].forward.variable.v_input""").as[Int] shouldBe -1
-      instance("""schedule[0].forward.tag.length()""").as[Int] should be > 0
+      instance("""schedule[0].forward[1].tag.length()""").as[Int] should be > 0
 
       // topic2 in backward state
       instance(""" backward[0].topic_name """).as[String] shouldBe "topic2"
@@ -227,6 +228,10 @@ class ChoreographySuite extends ExecutorSuiteHelper {
       instance("""topic[?(_.topic_name == "topic5")][-].length()""").as[Int] shouldBe 1
       instance("""topic[?(_.topic_name == "topic5")][-][0].field.c_recursion """).as[Seq[String]] shouldBe Seq("finish")
 
+      // topic6, 测试多个forwardContext
+      instance("""topic[?(_.topic_name == "topic6")][-].length()""").as[Int] shouldBe 1
+      instance("""topic[?(_.topic_name == "topic6")][-][0].field.t_log """).as[Boolean] shouldBe true
+
       // delete backward context
       val logIds = instance("""topic.log_id """).as[Seq[String]].map("&" + _)
       instance("""delete.length() """).as[Int] should be > 0
@@ -236,9 +241,12 @@ class ChoreographySuite extends ExecutorSuiteHelper {
   }
 
   /**
+   *               -- (schedule) --> /v2/callback/schedule
+   *              /
    * /v2/callback/register --(callback)--> /v2/callback/callback
    *              \
    *               --(timeout)--> /v2/callback/timeout
+   *
    *
    * /v2/callback/source --(include)-> /v2/callback/callback --(include)--> /v2/callback/hello <----
    *                                                                                         \      \
@@ -246,34 +254,38 @@ class ChoreographySuite extends ExecutorSuiteHelper {
    */
 
   test("callback in time") {
-    val token = "#12345"
-    val register = newEvent("1", "a")("v2/callback/register")
-    val callback = newEvent("1", "a")("v2/callback/source")
+    val token = "12345"
+    val register = newEvent("1", "a")("v2/callback/register", ("token", Value(token)))
+    val callback = newEvent("1", "a")("v2/callback/source", ("token", Value(token)))
     var timeout: FlowEvent = null
+    var schedule: FlowEvent = null
     run(register) { instance =>
       // token context for callback
       instance.getToken(0).getArgumentMap.asScala.mapValues(Value(_)) shouldBe
         Map("link" -> Value(1), "importance" -> Value(1))
-      // println(instance.toJson)
       // generate timeout event with token
-      timeout = instance.getSchedule(0)
+      timeout = instance.getSchedule(1)
       timeout.getFlowName shouldBe "/v2/callback/timeout"
-      timeout.getToken shouldBe token
-      getLocalTrace().keySet should contain(token)
-      timeout = instance.getSchedule(0)
+      timeout.getToken shouldBe "#" + token
+      schedule = instance.getSchedule(0)
+      getLocalTrace().keySet should contain("#" + token)
+    }
+
+    // 测试在callback 或者 callback timeout之间有其他schedule事件执行的情况
+    run(schedule) {instance =>
+      instance("""topic""").as[Value] shouldBe NULL
     }
 
     // callback flow executes with context args
     run(callback) { instance =>
-      // println(instance.toJson)
       val callbackFlowArgs = instance.getProcedure(1).getArgumentMap.asScala
       callbackFlowArgs("#").getDict.getChildMap.mapValues(Value(_)) shouldBe
         Map("link" -> Value(1), "importance" -> Value(1))
-      getLocalTrace().keySet should not contain (token)
+      getLocalTrace().keySet should not contain ("#" + token)
 
       // after callback, topic3 is complete
       instance("""topic[0].topic_name """).as[String] shouldBe "topic3"
-      instance("""topic[0].field.length() """).as[Int] shouldBe 8
+      instance("""topic[0].field.length() """).as[Int] shouldBe 9
       instance("""topic[0].field.t_callback """).as[Boolean] shouldBe true
       // instance("""topic[0].field.t_timeout """).as[Boolean] shouldBe false
     }
@@ -285,24 +297,31 @@ class ChoreographySuite extends ExecutorSuiteHelper {
   }
 
   test("callback out of time") {
-    val token = "#12345"
-    val register = newEvent("1", "a")("v2/callback/register")
-    val callback = newEvent("1", "a")("v2/callback/source")
+    val token = "12345"
+    val register = newEvent("1", "a")("v2/callback/register", ("token", Value(token)))
+    val callback = newEvent("1", "a")("v2/callback/source", ("token", Value(token)))
     var timeout: FlowEvent = null
+    var schedule: FlowEvent = null
     run(register) { instance =>
-      timeout = instance.getSchedule(0)
+      timeout = instance.getSchedule(1)
+      schedule = instance.getSchedule(0)
     }
+
+    // 测试在callback 或者 callback timeout之间有其他schedule事件执行的情况
+     run(schedule) { instance =>
+      instance("""topic""").as[Value] shouldBe NULL
+     }
 
     // timeout flow executed with context args
     run(timeout) { instance =>
       val callbackFlowArgs = instance.getProcedure(0).getArgumentMap.asScala
       callbackFlowArgs("#").getDict.getChildMap.mapValues(Value(_)) shouldBe
         Map("link" -> Value(1), "importance" -> Value(1))
-      getLocalTrace().keySet should not contain (token)
+      getLocalTrace().keySet should not contain ("#" +  token)
 
       // topic3 is finished
       instance("""topic[0].topic_name """).as[String] shouldBe "topic3"
-      instance("""topic[0].field.length() """).as[Int] shouldBe 5
+      instance("""topic[0].field.length() """).as[Int] shouldBe 6
       instance("""topic[0].field.t_callback """).as[Boolean] shouldBe false
       // instance("""topic[0].field.t_timeout """).as[Boolean] shouldBe true
     }
@@ -311,6 +330,43 @@ class ChoreographySuite extends ExecutorSuiteHelper {
     run(callback) { instance =>
       instance.getProcedure(0).getFaultCount should be > 0
     }
+  }
+
+  test("multi callback event") {
+    val start = newEvent("1", "a")("v2/callback/start")
+    var callback = newEvent("1", "a")("v2/callback/source", ("token", Value("model_a")))
+    var callback2 = newEvent("1", "a")("v2/callback/source", ("token", Value("model_b")))
+    var timeout: FlowEvent = null
+    var timeout2: FlowEvent = null
+
+    run(start) { instance =>
+      timeout = instance.getScheduleList.filter(a =>
+        a.getFlowName == "/v2/callback/timeout" && a.getToken == "#model_a").head
+      timeout2 = instance.getScheduleList.filter(a =>
+        a.getFlowName == "/v2/callback/timeout" && a.getToken == "#model_b").head
+      instance.getScheduleCount shouldBe 4
+      instance.getBackwardCount shouldBe 2
+      instance.getTokenCount shouldBe 2
+    }
+
+    run(timeout) { instance =>
+      instance.getTopicCount shouldBe 1
+      instance.getTopicList.head.getScopeList should contain theSameElementsAs Seq("main", "model_a", "register_a")
+    }
+
+    run(callback) { instance =>
+        instance.getTopicCount shouldBe 0
+    }
+
+    run(callback2) { instance =>
+      instance.getTopicCount shouldBe 1
+      instance.getTopicList.head.getScopeList should contain theSameElementsAs Seq("main", "model_b", "register_b")
+    }
+
+    run(timeout2) { instance =>
+      instance.getTopicCount shouldBe 0
+    }
+
   }
 
   /**

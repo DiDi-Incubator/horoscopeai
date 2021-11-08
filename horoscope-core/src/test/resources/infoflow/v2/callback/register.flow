@@ -1,9 +1,10 @@
 # /v2/callback/register
 
 ***
-    uuid <- "12345"
+    uuid <- @token
     link <- 1
     importance <- 1
     meta <- "/v2/callback/register"
+    <schedule> + "1 minutes" => /v2/callback/schedule
     // $q <- 1
 ***

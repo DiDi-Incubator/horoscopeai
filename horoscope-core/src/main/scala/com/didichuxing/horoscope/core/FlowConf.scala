@@ -54,7 +54,7 @@ object FlowConf {
   }
 
   case class CallbackConf(name: String, enabled: Boolean, registerFlow: String, callbackFlow: String,
-    timeoutFlow: Option[String], timeout: String, token: String, args: Map[String, String]) {
+    timeoutFlow: String, timeout: String, token: String, args: Map[String, String]) {
     def expressions: Map[String, Seq[String]] = {
       Map(registerFlow -> (Seq(token) ++ args.values))
     }

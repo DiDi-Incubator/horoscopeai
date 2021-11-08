@@ -133,7 +133,7 @@ class FlowBuilder(flowDef: FlowDef, flowConf: FlowConf)(
   }
 
   case class CallbackBuilder(scope: String, flow: String, token: NodeBuilder, definition: CallbackConf)(
-    args: Map[String, NodeBuilder], timeout: Duration, timeoutFlow: Option[String]
+    args: Map[String, NodeBuilder], timeout: Duration, timeoutFlow: String
   ) extends GenericNodeBuilder[Callback] with ProcedureSymbol {
     lazy val result: Callback = {
       Callback(scope, flow, token.result, definition)(

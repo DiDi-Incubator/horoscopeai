@@ -1,0 +1,5 @@
+# /v2/callback/model-a
+
+***
+    <register_a> => /v2/callback/register?token="model_a"
+***
