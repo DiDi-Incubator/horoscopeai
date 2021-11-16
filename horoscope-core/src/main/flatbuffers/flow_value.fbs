@@ -1,0 +1,29 @@
+namespace com.didichuxing.horoscope.core.fb;
+
+enum Catalog: byte { Null = 0, Binary, Fractional, Integral, Text, Boolean, List, Dict = 7 }
+
+table FlowValue {
+    catalog:Catalog;
+    binary:[byte];
+    fractional:double;
+    integral:long;
+    text:string;
+    boolean_value:bool;
+    list:[FlowValue];
+    dict:[Pair];
+}
+
+table List {
+    child:[FlowValue];
+}
+
+table Pair {
+    key:string (key);
+    value:FlowValue;
+}
+
+table Dict {
+   child:[Pair];
+}
+
+root_type FlowValue;

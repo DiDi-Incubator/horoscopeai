@@ -32,5 +32,6 @@ package object convert {
       with GsonConvertible
       with ProtobufConvertible
       with JythonConvertible
+      with FlatBufferConvertible
 
 }

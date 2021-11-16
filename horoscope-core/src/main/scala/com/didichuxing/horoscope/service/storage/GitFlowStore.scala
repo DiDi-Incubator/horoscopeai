@@ -130,14 +130,14 @@ class GitFlowStore(
 
   private def loadConf(): Unit = {
     var builder = Map.newBuilder[String, FlowConf]
-    val logConf = configStore.getConfList(LOG_TYPE)
+    val logConfList = configStore.getConfList(LOG_TYPE)
     val subscribeMap= configStore.getConfList(SUBSCRIPTION_TYPE).groupBy(_.getString("publisher"))
     val experimentMap = configStore.getConfList(EXPERIMENT_TYPE).groupBy(_.getString("flow"))
     val callbackMap = configStore.getConfList(CALLBACK_TYPE).groupBy(_.getString("flow.register"))
 
     for (name <- flowDefMap.keys) {
       builder += (
-        name -> FlowConf(logConf,
+        name -> FlowConf(logConfList,
           subscribeMap.getOrElse(name, Nil),
           experimentMap.getOrElse(name, Nil),
           callbackMap.getOrElse(name, Nil)

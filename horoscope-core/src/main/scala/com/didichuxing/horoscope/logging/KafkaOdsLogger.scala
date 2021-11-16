@@ -25,7 +25,7 @@ class KafkaOdsLogger(config: Config) extends OdsLogger with LogHelper with Loggi
   assert(topic.size > 0, "topic is null")
   info(("msg", "KafkaOdsLogger started"))
 
-  private val topicLogger = new TopicLogger(config)
+  private val topicLogger = new KafkaTopicLogger(config)
 
   override def log(flowInstance: FlowInstance): Unit = {
     try {

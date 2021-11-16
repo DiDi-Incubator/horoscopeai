@@ -10,7 +10,7 @@ import com.typesafe.config.Config
 import org.apache.kafka.clients.producer.{Callback, KafkaProducer, ProducerRecord, RecordMetadata}
 import org.apache.kafka.common.serialization.StringSerializer
 
-class TopicLogger(config: Config) extends Logging with LogHelper {
+class KafkaTopicLogger(config: Config) extends Logging with LogHelper {
   import scala.collection.JavaConverters._
   private val kafkaConfig = config.getConfig("horoscope.topic-logger.kafka")
   private val topic: String = kafkaConfig.getString("topic")

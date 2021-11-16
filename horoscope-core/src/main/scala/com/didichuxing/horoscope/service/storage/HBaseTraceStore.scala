@@ -12,6 +12,7 @@ import java.util.concurrent.{LinkedBlockingQueue, ThreadPoolExecutor, TimeUnit}
 import com.alibaba.ttl.threadpool.TtlExecutors
 import com.didichuxing.horoscope.core.FlowRuntimeMessage._
 import com.didichuxing.horoscope.core.{FlowRuntimeMessage, TraceStore}
+import com.didichuxing.horoscope.runtime.{Binary, Value}
 import com.didichuxing.horoscope.service.source.NamedThreadFactory
 import com.didichuxing.horoscope.service.storage.HBaseTraceStore._
 import com.didichuxing.horoscope.util.Constants._
@@ -184,7 +185,7 @@ class HBaseTraceStore(executionContext: ExecutionContext = null) extends Abstrac
   }
 
   private def getMailboxEvent(traceContextTable: Table, rowKeyBytes: Array[Byte], cf: Array[Byte],
-                              sourceCol: Array[Byte]): Option[FlowEvent] = {
+    sourceCol: Array[Byte]): Option[FlowEvent] = {
     val get = new Get(rowKeyBytes)
     get.addColumn(cf, sourceCol)
     val result = traceContextTable.get(get)
@@ -237,7 +238,7 @@ class HBaseTraceStore(executionContext: ExecutionContext = null) extends Abstrac
         .setEventId(event.getEventId)
         .setName(v.getLogId)
       val value = TraceVariable.newBuilder().setValue(
-        FlowValue.newBuilder().setBinary(v.toByteString)
+        Binary(v.toByteArray).as[FlowValue]
       ).setReference(reference).build()
       contextMap.put(v.getLogId, value)
     })
@@ -246,7 +247,7 @@ class HBaseTraceStore(executionContext: ExecutionContext = null) extends Abstrac
         .setEventId(event.getEventId)
         .setName(v.getToken)
       val value = TraceVariable.newBuilder().setValue(
-        FlowValue.newBuilder().setBinary(v.toByteString)
+        Binary(v.toByteArray).as[FlowValue]
       ).setReference(reference).build()
       contextMap.put(v.getToken, value)
     })

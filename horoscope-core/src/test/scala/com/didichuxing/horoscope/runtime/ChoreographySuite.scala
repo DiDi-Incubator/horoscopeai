@@ -279,7 +279,7 @@ class ChoreographySuite extends ExecutorSuiteHelper {
     // callback flow executes with context args
     run(callback) { instance =>
       val callbackFlowArgs = instance.getProcedure(1).getArgumentMap.asScala
-      callbackFlowArgs("#").getDict.getChildMap.mapValues(Value(_)) shouldBe
+      Value(callbackFlowArgs("#")).as[ValueDict].toMap shouldBe
         Map("link" -> Value(1), "importance" -> Value(1))
       getLocalTrace().keySet should not contain ("#" + token)
 
@@ -315,7 +315,7 @@ class ChoreographySuite extends ExecutorSuiteHelper {
     // timeout flow executed with context args
     run(timeout) { instance =>
       val callbackFlowArgs = instance.getProcedure(0).getArgumentMap.asScala
-      callbackFlowArgs("#").getDict.getChildMap.mapValues(Value(_)) shouldBe
+      Value(callbackFlowArgs("#")).as[ValueDict].toMap shouldBe
         Map("link" -> Value(1), "importance" -> Value(1))
       getLocalTrace().keySet should not contain ("#" +  token)
 

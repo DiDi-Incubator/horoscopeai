@@ -27,6 +27,7 @@ message FlowValue {
         List list = 6;
         Dict dict = 7;
     }
+    optional bytes fb_binary = 8;   // flatbuffer bytes
 }
 
 message FlowEvent {

@@ -15,6 +15,7 @@ import akka.http.scaladsl.server.Route
 import com.alibaba.ttl.threadpool.TtlExecutors
 import com.didichuxing.horoscope.core.FlowRuntimeMessage._
 import com.didichuxing.horoscope.core.FlowRuntimeMessage
+import com.didichuxing.horoscope.runtime.{Binary, Implicits, Value}
 import com.didichuxing.horoscope.service.source.NamedThreadFactory
 import com.didichuxing.horoscope.util.Constants.CONTEXT_VAL_FLAG
 import com.didichuxing.horoscope.util.Utils.{close, getSlot}
@@ -168,7 +169,7 @@ class RedisTraceStore(executionContext: ExecutionContext = null) extends Abstrac
     instance.getBackwardList.foreach(b => {
       val logId = toBytes(b.getLogId)
       val value = TraceVariable.newBuilder().setValue(
-        FlowValue.newBuilder().setBinary(b.toByteString)
+        Binary(b.toByteArray).as[FlowValue]
       ).build().toByteArray
       contexts.put(logId, value)
     })
@@ -176,7 +177,7 @@ class RedisTraceStore(executionContext: ExecutionContext = null) extends Abstrac
     instance.getTokenList.foreach(t => {
       val token = toBytes(t.getToken)
       val value = TraceVariable.newBuilder().setValue(
-        FlowValue.newBuilder().setBinary(t.toByteString)
+        Binary(t.toByteArray).as[FlowValue]
       ).build().toByteArray
       contexts.put(token, value)
     })
@@ -345,6 +346,7 @@ class RedisTraceStore(executionContext: ExecutionContext = null) extends Abstrac
     import akka.http.scaladsl.server.Directives._
     import spray.json._
     import DefaultJsonProtocol._
+    import com.didichuxing.horoscope.runtime.convert.FlowValueConverter._
     pathPrefix("redis") {
       concat(
         get {
@@ -461,11 +463,13 @@ class RedisTraceStore(executionContext: ExecutionContext = null) extends Abstrac
                 val context = getCurrentContext(traceId).map {
                   case (key, value) =>
                     if (key.startsWith("#")) {
-                      (key, JsonFormat.printer().print(TokenContext.parseFrom(value.getValue.getBinary)).parseJson)
+                      (key, Implicits.gson.toJson(
+                        Value(TokenContext.parseFrom(value.getValue.getBinaryValue))).parseJson)
                     } else if (key.startsWith("&")) {
-                      (key, JsonFormat.printer().print(BackwardContext.parseFrom(value.getValue.getBinary)).parseJson)
+                      (key, Implicits.gson.toJson(
+                        Value(BackwardContext.parseFrom(value.getValue.getBinaryValue))).parseJson)
                     } else {
-                      (key, JsonFormat.printer().print(value.getValue).parseJson)
+                      (key, Implicits.gson.toJson(Value(value.getValue)).parseJson)
                     }
                 }
                 context.toMap.toJson
@@ -486,7 +490,7 @@ class RedisTraceStore(executionContext: ExecutionContext = null) extends Abstrac
                   case "sc" => pollSchedulerEvents(source, slot.toInt, System.currentTimeMillis(), 10)
                   case _ => Nil
                 }
-                events.map(JsonFormat.printer().omittingInsignificantWhitespace().print(_).parseJson).toList
+                events.map(e => Implicits.gson.toJson(Value(e)).parseJson).toList
               } finally {
                 close(jedis)
               }

@@ -211,11 +211,15 @@ object Flow {
     override val optDeps: Set[Node] = Set.empty
   }
 
-  case class Topic(name: String, flow: String, fields: Seq[TopicFiled], detailed: Boolean = false) {
-    val variableFields: Seq[TopicFiled] = fields.filter(_.`type` == "variable")
-    val choiceFields: Seq[TopicFiled] = fields.filter(_.`type` == "choice")
-    val tagFields: Seq[TopicFiled] = fields.filter(_.`type` == "tag")
+  case class Topic(name: String, keyFlow: String, fields: Seq[TopicFiled], detailed: Boolean = false) {
+    val variableFields: Seq[TopicFiled] = fields.filter(_.`type` == VARIABLE_TYPE)
+    val choiceFields: Seq[TopicFiled] = fields.filter(_.`type` == CHOICE_TYPE)
+    val tagFields: Seq[TopicFiled] = fields.filter(_.`type` == TAG_TYPE)
   }
+
+  val VARIABLE_TYPE = "variable"
+  val CHOICE_TYPE = "choice"
+  val TAG_TYPE = "tag"
 
   case class TopicFiled(name: String, `type`: String,
     expression: Option[Expression], flow: String, topic: String, isForward: Boolean)

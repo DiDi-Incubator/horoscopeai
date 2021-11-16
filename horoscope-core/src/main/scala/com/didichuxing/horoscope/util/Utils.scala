@@ -207,4 +207,12 @@ object Utils extends Logging {
         complete(StatusCodes.NotAcceptable, e.getMessage)
     }
   }
+
+  object StringOption {
+    def apply(v: String): Option[String] = {
+      if (v.isEmpty) None else Some(v)
+    }
+  }
+
+
 }

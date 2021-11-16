@@ -71,6 +71,10 @@
             <groupId>com.googlecode.protobuf-java-format</groupId>
             <artifactId>protobuf-java-format</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.google.flatbuffers</groupId>
+            <artifactId>flatbuffers-java</artifactId>
+        </dependency>
 
         <!--akka dependencies-->
         <dependency>
@@ -232,6 +236,34 @@
                 <groupId>org.xolstice.maven.plugins</groupId>
                 <artifactId>protobuf-maven-plugin</artifactId>
             </plugin>
+            <plugin>
+                <groupId>com.sequsoft.maven.plugins</groupId>
+                <artifactId>flatbuffers-maven-plugin</artifactId>
+                <version>0.0.1</version>
+                <configuration>
+                    <version>${flatbuffers.version}</version>
+                    <sources>
+                        <source>${basedir}/src/main/flatbuffers/flow_value.fbs</source>
+                    </sources>
+                    <generators>
+                        <generator>all</generator>
+                    </generators>
+                    <includes>
+                        <include>${basedir}/src/main/flatbuffers</include>
+                    </includes>
+                    <destination>${basedir}/target/generated-sources/flatbuffers</destination>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>generate-sources</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>compile-flatbuffers</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
             <plugin>
                 <groupId>org.antlr</groupId>
                 <artifactId>antlr4-maven-plugin</artifactId>

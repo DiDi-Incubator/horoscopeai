@@ -5,6 +5,7 @@
  */
 
 package com.didichuxing.horoscope.runtime.convert
+import java.nio.ByteBuffer
 
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.{FlowValue, FlowValueOrBuilder}
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowValue.ValueCase
@@ -21,6 +22,10 @@ import scala.collection.JavaConversions._
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import scala.util.Try
+import com.didichuxing.horoscope.core.fb.{FlowValue => FBFlowValue}
+import com.didichuxing.horoscope.runtime.convert.FlatBufferConverterUtil._
+import com.google.flatbuffers.FlatBufferBuilder
+import com.typesafe.config.{Config, ConfigFactory}
 
 trait LowPriorityProtobufConvertible
 
@@ -117,15 +122,21 @@ class MessageConverter[T <: MessageOrBuilder](simplify: Boolean = true) extends 
   }
 
   def getFlowValue(message: FlowValueOrBuilder): Value = {
-    message.getValueCase match {
-      case VALUE_NOT_SET => NULL
-      case BINARY => Binary(message.getBinary.toByteArray)
-      case FRACTIONAL => NumberValue(BigDecimal(message.getFractional))
-      case INTEGRAL => NumberValue(BigDecimal(message.getIntegral))
-      case TEXT => Text(message.getText)
-      case ValueCase.BOOLEAN => BooleanValue(message.getBoolean)
-      case LIST => new ListWrapper(message.getList)
-      case DICT => new DictWrapper(message.getDict)
+    // 兼容升级, fb_binary为第一优先级
+    if (message.hasFbBinary) {
+      val fbValue = FBFlowValue.getRootAsFlowValue(ByteBuffer.wrap(message.getFbBinary.toByteArray))
+      Value(fbValue)
+    } else {
+      message.getValueCase match {
+        case VALUE_NOT_SET => NULL
+        case BINARY => Binary(message.getBinary.toByteArray)
+        case FRACTIONAL => NumberValue(BigDecimal(message.getFractional))
+        case INTEGRAL => NumberValue(BigDecimal(message.getIntegral))
+        case TEXT => Text(message.getText)
+        case ValueCase.BOOLEAN => BooleanValue(message.getBoolean)
+        case LIST => new ListWrapper(message.getList)
+        case DICT => new DictWrapper(message.getDict)
+      }
     }
   }
 }
@@ -140,7 +151,7 @@ object MessageParser {
       val fieldNameMap = builder.getDescriptorForType.getFields.map { field =>
         field.getName -> field
       }.toMap
-      dict.iterator.foreach { case(key, value) =>
+      dict.iterator.foreach { case (key, value) =>
         val field = fieldNameMap.get(key)
         if (field.isEmpty) {
           throw new InvalidProtocolBufferException(
@@ -192,7 +203,7 @@ object MessageParser {
       val valueField = msgType.findFieldByName("value")
       if (keyField != null && valueField != null) {
         val dict = value.as[ValueDict]
-        dict.iterator.foreach { case(key, value) =>
+        dict.iterator.foreach { case (key, value) =>
           val entryBuilder = builder.newBuilderForField(field)
           val k = parseFieldValue(keyField, Value(key), entryBuilder)
           val v = parseFieldValue(valueField, value, entryBuilder)
@@ -235,6 +246,10 @@ object MessageParser {
 }
 
 object FlowValueConverter {
+  val config: Config = ConfigFactory.load(Thread.currentThread().getContextClassLoader, "application")
+  // pb or fb
+  val flowValueCatalog: String = Try(config.getString("horoscope.flow-value.serializer")).getOrElse("pb")
+
   import scala.collection.JavaConversions._
 
   class DictWrapper(dict: FlowValue.DictOrBuilder) extends ValueDict {
@@ -247,43 +262,61 @@ object FlowValueConverter {
     override def children: Seq[Value] = list.getChildList.view.map(Value(_))
   }
 
+  implicit class FlowValueHelper(value: FlowValueOrBuilder) {
+    def getTextValue: String = Value(value).as[Text]
+
+    def getBinaryValue: Array[Byte] = Value(value).as[Binary]
+
+    def getBooleanValue: Boolean = Value(value).as[BooleanValue]
+
+    def getBigDecimalValue: BigDecimal = Value(value).as[NumberValue]
+  }
+
   def encode(value: Value): FlowValue = {
     val builder = FlowValue.newBuilder()
-    value match {
-      case NULL =>
-      case list: ValueList =>
-        val flowList = FlowValue.List.newBuilder()
-        for (v <- list.iterator) {
-          flowList.addChild(encode(v._2))
-        }
-        builder.setList(flowList)
-      case dict: ValueDict =>
-        val flowDict = FlowValue.Dict.newBuilder()
-        for (v <- dict.iterator) {
-          flowDict.putChild(v._1, encode(v._2))
-        }
-        builder.setDict(flowDict)
-      case BooleanValue(primitive) =>
-        builder.setBoolean(primitive)
-      case NumberValue(primitive) =>
-        try {
-          if (primitive.scale == 0) {
-            builder.setIntegral(primitive.toLongExact)
-          } else {
-            builder.setFractional(primitive.toDouble)
+    if (flowValueCatalog == "fb") {
+      val fbBuilder = new FlatBufferBuilder()
+      val offset = pack(value, fbBuilder)
+      fbBuilder.finish(offset)
+      val fbBytes = fbBuilder.sizedByteArray()
+      builder.setFbBinary(ByteString.copyFrom(fbBytes))
+    } else {
+      value match {
+        case NULL =>
+        case list: ValueList =>
+          val flowList = FlowValue.List.newBuilder()
+          for (v <- list.iterator) {
+            flowList.addChild(encode(v._2))
           }
-        } catch {
-          case _: ArithmeticException =>
-            builder.setFractional(primitive.toDouble)
-        }
-      case Text(text) =>
-        if (text != null) {
-          builder.setText(text)
-        }
-      case Binary(binary) =>
-        if (binary != null) {
-          builder.setBinary(ByteString.copyFrom(binary))
-        }
+          builder.setList(flowList)
+        case dict: ValueDict =>
+          val flowDict = FlowValue.Dict.newBuilder()
+          for (v <- dict.iterator) {
+            flowDict.putChild(v._1, encode(v._2))
+          }
+          builder.setDict(flowDict)
+        case BooleanValue(primitive) =>
+          builder.setBoolean(primitive)
+        case NumberValue(primitive) =>
+          try {
+            if (primitive.scale == 0) {
+              builder.setIntegral(primitive.toLongExact)
+            } else {
+              builder.setFractional(primitive.toDouble)
+            }
+          } catch {
+            case _: ArithmeticException =>
+              builder.setFractional(primitive.toDouble)
+          }
+        case Text(text) =>
+          if (text != null) {
+            builder.setText(text)
+          }
+        case Binary(binary) =>
+          if (binary != null) {
+            builder.setBinary(ByteString.copyFrom(binary))
+          }
+      }
     }
     builder.build()
   }
