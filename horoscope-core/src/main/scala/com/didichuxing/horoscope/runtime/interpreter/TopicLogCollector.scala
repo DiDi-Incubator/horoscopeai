@@ -4,7 +4,7 @@ import com.didichuxing.horoscope.core.Flow
 import com.didichuxing.horoscope.core.Flow._
 import com.didichuxing.horoscope.core.FlowRuntimeMessage._
 import com.didichuxing.horoscope.runtime.interpreter.TopicLogCollector.LogIdentity
-import com.didichuxing.horoscope.runtime.{NULL, Value}
+import com.didichuxing.horoscope.runtime.{NULL, Value, ValueDict}
 import com.didichuxing.horoscope.util.{Logging, Utils}
 
 import scala.collection.JavaConversions._
@@ -590,15 +590,17 @@ object TopicLogCollector {
       builder.putAllField(fields)
 
       if (topic.detailed) {
-        val triggered = (variables ++ choices ++ flows).getOrElse(key, Map()).mapValues(v =>
-          Value(v.getReference.toBuilder.clearName()).as[FlowValue]
-        )
+        val triggeredDetails = (variables(key) ++ choices(key) ++ flows(key)).mapValues { v =>
+          val withTimestamp: Value = Value(v.getReference.toBuilder.clearName()).as[ValueDict]
+            .updated("timestamp", Value(v.getTimestamp))
+          withTimestamp.as[FlowValue]
+        }
         // 未触发的
-        val unTriggered = dependencyFlows(key).map(flowName => {
+        val unTriggeredDetails = dependencyFlows(key).map(flowName => {
           val tagName = flowTagMap(flowName)
           tagName -> Value(Map("flow_name" -> Value(flowName))).as[FlowValue]
         }).toMap
-        val details = triggered ++ unTriggered
+        val details = triggeredDetails ++ unTriggeredDetails
         builder.putAllDetail(details)
       }
       builder.build()

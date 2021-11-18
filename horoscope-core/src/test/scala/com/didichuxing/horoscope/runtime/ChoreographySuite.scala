@@ -237,6 +237,9 @@ class ChoreographySuite extends ExecutorSuiteHelper {
       instance("""delete.length() """).as[Int] should be > 0
       instance("""delete """).as[Seq[String]] should contain theSameElementsAs(logIds)
       getLocalTrace().keys.toSeq should contain theSameElementsAs(Seq("$"))
+
+      // detail 字段
+      instance(""" topic[?(_.topic_name == "topic2")][-][0].detail.length() """).as[Int] shouldBe 10
     }
   }
 
