@@ -10,6 +10,7 @@ import java.util.{Timer, TimerTask}
 import com.didichuxing.horoscope.util.{Logging, Utils}
 import com.typesafe.config.Config
 
+@deprecated(since = "0.6.3")
 trait TimeTrigger {
 
   def start(scheduler: Scheduler)
@@ -18,6 +19,7 @@ trait TimeTrigger {
 
 }
 
+@deprecated(since = "0.6.3")
 class DefaultTimeTrigger(config: Config) extends TimeTrigger with Logging {
 
   val triggerTime = Utils.configIntOrDefault(config, "horoscope.scheduler.trigger", 60)

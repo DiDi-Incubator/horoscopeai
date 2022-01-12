@@ -11,6 +11,7 @@ import com.didichuxing.horoscope.core.SourceFactory
 import com.didichuxing.horoscope.runtime.FlowExecutor
 import com.didichuxing.horoscope.service.resource.ResourceManager
 
+@deprecated(since = "0.6.3")
 trait Scheduler {
   def start(flowExecutor: FlowExecutor, sourceFactories: Map[String, SourceFactory])
 

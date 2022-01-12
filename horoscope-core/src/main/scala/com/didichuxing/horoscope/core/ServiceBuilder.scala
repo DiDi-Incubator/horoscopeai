@@ -9,7 +9,6 @@ package com.didichuxing.horoscope.core
 import akka.actor.ActorSystem
 import com.didichuxing.horoscope.core.OdsLogger
 import com.didichuxing.horoscope.runtime.expression.BuiltIn
-import com.didichuxing.horoscope.service.scheduler.TimeTrigger
 import com.didichuxing.horoscope.service.source.SourceExecutionContext
 import com.typesafe.config.Config
 
@@ -28,8 +27,6 @@ trait ServiceBuilder {
   def withSourceFactory(name: String, factory: SourceFactory): this.type
 
   def withActorSystem(system: ActorSystem): this.type
-
-  def withTimeTrigger(timeTrigger: TimeTrigger): this.type
 
   def withBuiltIn(builtIn: BuiltIn): this.type
 

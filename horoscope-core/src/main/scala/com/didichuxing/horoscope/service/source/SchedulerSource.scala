@@ -13,10 +13,10 @@ import com.didichuxing.horoscope.runtime.Value
 import com.didichuxing.horoscope.service.ApplicationContext
 import com.didichuxing.horoscope.util.Logging
 import com.typesafe.config.Config
-
 /**
  * http://wiki.intra.xiaojukeji.com/pages/viewpage.action?pageId=322779383
  */
+@deprecated(since = "0.6.3")
 class SchedulerSource(sourceConfig: Config, builder: EventBuilder[List[Array[Byte]], List[Value]])
   extends Source with Logging {
 
@@ -43,6 +43,7 @@ class SchedulerSource(sourceConfig: Config, builder: EventBuilder[List[Array[Byt
   }
 }
 
+@deprecated(since = "0.6.3")
 class SchedulerEventBus(sourceName: String, params: Config)
                        (implicit ctx: ApplicationContext) extends EventBus with Logging {
 
@@ -71,13 +72,13 @@ class SchedulerEventBus(sourceName: String, params: Config)
   }
 }
 
+@deprecated(since = "0.6.3")
 class SchedulerEventProcessor(sourceName: String, params: Config)(implicit ctx: ApplicationContext)
   extends DefaultEventProcessor(sourceName, params) with Logging {
 
   override def putEvent(events: List[FlowEvent]): List[FlowEvent] = {
-    info(("msg", "available backpress"), ("source", sourceName), ("count", backPress.availablePermits()))
     //scheduler source 不需要反压超时，也不需要写入mailbox
-    backPress.acquire(events.size)
+    rateLimiter.acquire(events.size)
     for (flowEvent <- events) {
       debug(("msg", "putEvent"), ("event trace", flowEvent.getTraceId))
       exec(flowEvent)

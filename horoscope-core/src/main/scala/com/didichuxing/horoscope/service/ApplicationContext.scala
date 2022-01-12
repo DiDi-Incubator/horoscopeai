@@ -12,7 +12,7 @@ import com.didichuxing.horoscope.runtime.FlowExecutor
 import com.didichuxing.horoscope.runtime.expression.BuiltIn
 import com.didichuxing.horoscope.service.api.HttpServer
 import com.didichuxing.horoscope.service.resource.{ResourceManager, ZkClient}
-import com.didichuxing.horoscope.service.scheduler.{MultiScheduler, Scheduler, TimeTrigger}
+import com.didichuxing.horoscope.service.scheduler.MultiScheduler
 import com.didichuxing.horoscope.service.source.SourceExecutionContext
 import com.typesafe.config.Config
 
@@ -25,13 +25,11 @@ import scala.collection.mutable
 class ApplicationContext {
 
   private var fe: FlowExecutor = _
-  private var sch: Scheduler = _
   private var msch: MultiScheduler = _
   private var cfg: Config = _
   private val sf: mutable.Map[String, SourceFactory] = mutable.Map[String, SourceFactory]()
   private var ts: TraceStore = _
   private var as: ActorSystem = _
-  private var tt: TimeTrigger = _
   private var sec: SourceExecutionContext = _
   private var bi: BuiltIn = _
   private var fs: FlowStore = _
@@ -49,11 +47,6 @@ class ApplicationContext {
 
   def withFlowExecutor(flowExecutor: FlowExecutor): this.type = {
     fe = flowExecutor
-    this
-  }
-
-  def withScheduler(scheduler: Scheduler): this.type = {
-    sch = scheduler
     this
   }
 
@@ -84,11 +77,6 @@ class ApplicationContext {
 
   def withActorSystem(system: ActorSystem): this.type = {
     as = system
-    this
-  }
-
-  def withTimeTrigger(timeTrigger: TimeTrigger): this.type = {
-    tt = timeTrigger
     this
   }
 
@@ -133,13 +121,9 @@ class ApplicationContext {
 
   def flowExecutor: FlowExecutor = fe
 
-  def scheduler: Scheduler = sch
-
   def multiScheduler: MultiScheduler = msch
 
   def system: ActorSystem = as
-
-  def timeTrigger: TimeTrigger = tt
 
   def sourceExecutionContext: SourceExecutionContext = sec
 

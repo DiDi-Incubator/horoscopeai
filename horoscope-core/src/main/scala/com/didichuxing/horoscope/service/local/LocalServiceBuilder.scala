@@ -54,10 +54,6 @@ class LocalServiceBuilder extends ServiceBuilder with Logging {
     this
   }
 
-  override def withTimeTrigger(timeTrigger: TimeTrigger): LocalServiceBuilder.this.type = {
-    ctx.withTimeTrigger(timeTrigger)
-    this
-  }
 
   override def withExecutionContext(executor: SourceExecutionContext): this.type = {
     ctx.withSourceExecutionContext(executor)
@@ -95,9 +91,6 @@ class LocalServiceBuilder extends ServiceBuilder with Logging {
       ctx.withActorSystem(ActorSystem("HoroscopeSystem", ctx.config))
       info("horoscope init default actor system HoroscopeSystem")
     }
-    if (ctx.timeTrigger == null) {
-      ctx.withTimeTrigger(new DefaultTimeTrigger(ctx.config))
-    }
 
     if (ctx.sourceExecutionContext == null) {
       ctx.withSourceExecutionContext(DefaultSourceExecutionContext(ctx.config))
@@ -114,7 +107,6 @@ class LocalServiceBuilder extends ServiceBuilder with Logging {
   def build(): FlowManager = {
     checkContext()
     ctx.withFlowExecutor(new FlowExecutorImpl(ctx.config, ctx.system, new LocalExecutorEnvironment))
-    ctx.withScheduler(new MemoryScheduler)
     ctx.withHttpServer(new HttpServer)
     new FlowManager
   }

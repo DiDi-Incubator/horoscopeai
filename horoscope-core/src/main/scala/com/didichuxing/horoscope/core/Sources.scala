@@ -18,10 +18,6 @@ object Sources {
     new KafkaSourceFactory[K, V](builder)
   }
 
-  def scheduler(builder: EventBuilder[List[Array[Byte]], List[Value]]): SourceFactory = {
-    new SchedulerSourceFactory(builder)
-  }
-
   def http(): SourceFactory = {
     new HttpSourceFactory()
   }

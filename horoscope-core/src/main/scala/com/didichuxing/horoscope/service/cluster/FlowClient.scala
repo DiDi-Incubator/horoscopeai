@@ -164,7 +164,7 @@ class FlowClient(implicit ctx: ApplicationContext) extends SourceListener with L
 
   override def onRemove(sourceName: String): Unit = {
     debug(s"on source delete: $sourceName")
-    if(sources.get(sourceName).isDefined) {
+    if(sources.contains(sourceName)) {
       stopSource(sourceName)
     } else {
       debug(s"source $sourceName not start")
@@ -174,7 +174,7 @@ class FlowClient(implicit ctx: ApplicationContext) extends SourceListener with L
   override def onUpdate(sourceName: String, source: Config): Unit = {
     debug(s"on source update: $source")
     val disabled = Try(source.getBoolean("parameter.disabled")).getOrElse(true)
-    if(sources.get(sourceName).isDefined) {
+    if(sources.contains(sourceName)) {
       stopSource(sourceName)
     }
     if(!disabled) {

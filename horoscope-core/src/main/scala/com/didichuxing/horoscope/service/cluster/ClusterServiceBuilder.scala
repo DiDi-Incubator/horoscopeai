@@ -46,7 +46,6 @@ class ClusterServiceBuilder extends LocalServiceBuilder with Logging {
     if (ctx.zkClient == null) {
       ctx.withZKClient(new ZkClient(ctx.config))
     }
-    ctx.withScheduler(new RocksDBScheduler)
     ctx.withResourceManager(new DefaultResourceManager)
     ctx.withFlowExecutor(new FlowExecutorImpl(ctx.config, ctx.system, new ClusterExecutorEnvironment))
     ctx.withHttpServer(new HttpServer)

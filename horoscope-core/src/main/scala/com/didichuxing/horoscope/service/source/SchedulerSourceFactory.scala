@@ -11,6 +11,7 @@ import com.didichuxing.horoscope.core.{Source, SourceFactory}
 import com.didichuxing.horoscope.runtime.Value
 import com.typesafe.config.Config
 
+@deprecated(since = "0.6.3")
 class SchedulerSourceFactory(builder: EventBuilder[List[Array[Byte]], List[Value]]) extends SourceFactory {
 
   override def newSource(config: Config): Source = {

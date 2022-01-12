@@ -22,9 +22,7 @@ class FlowWorker(implicit ctx: ApplicationContext) extends Logging {
   implicit val resourceManager = ctx.resourceManager
   implicit val flowExecutor = ctx.flowExecutor
   implicit val zkClient = ctx.zkClient
-  implicit val scheduler = ctx.scheduler
   implicit val system = ctx.system
-  implicit val timeTrigger = ctx.timeTrigger
   implicit val sec = ctx.sourceExecutionContext
   /**
    * 启动顺序
@@ -32,9 +30,7 @@ class FlowWorker(implicit ctx: ApplicationContext) extends Logging {
    */
   def startService(): Unit = {
     flowExecutor.start()
-    scheduler.start(flowExecutor, sourceFactories)
     resourceManager.start()
-    timeTrigger.start(scheduler)
     info("All service started")
   }
 
@@ -43,9 +39,7 @@ class FlowWorker(implicit ctx: ApplicationContext) extends Logging {
    * leaderSelector->schedulerSource->rocksDB->flowExecutor->actor->zk
    */
   def stopService(): Unit = {
-    timeTrigger.stop()
     resourceManager.stop()
-    scheduler.stop()
     flowExecutor.stop()
     Await.result(system.terminate(), 10 seconds)
     zkClient.stop()

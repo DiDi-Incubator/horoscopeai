@@ -34,7 +34,6 @@ class LocalRunner extends Logging {
       .withBuiltIn(flowStore.getBuiltIn)
       .withFlowStore(flowStore)
       .withSourceFactory("batchJsonKafka", Sources.kafka(EventBuilders.sourceEventBuilder()))
-      .withSourceFactory(SCH_SOURCE_FACTORY, Sources.scheduler(EventBuilders.schedulerSourceEventBuilder()))
       .withSourceFactory("httpSource", Sources.http())
       .build()
 

@@ -18,7 +18,7 @@ import com.didichuxing.horoscope.util.Logging
 import com.typesafe.config.Config
 
 import scala.collection.mutable.ListBuffer
-
+@deprecated(since = "0.6.3")
 class MemoryScheduler(implicit ctx: ApplicationContext) extends Scheduler with Logging {
 
   implicit val config = ctx.config

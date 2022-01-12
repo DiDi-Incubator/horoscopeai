@@ -28,20 +28,14 @@ class FlowManager(implicit ctx: ApplicationContext) extends Logging {
   implicit val sourceFactories = ctx.sourceFactories
   implicit val traceStore = ctx.traceStore
   implicit val flowExecutor = ctx.flowExecutor
-  implicit val scheduler = ctx.scheduler
-  implicit val timeTrigger = ctx.timeTrigger
   implicit val sec = ctx.sourceExecutionContext
   val sources = mutable.Map[String, Source]()
 
   def startService(): Unit = {
     flowExecutor.start()
-    scheduler.start(flowExecutor, sourceFactories)
-    timeTrigger.start(scheduler)
   }
 
   def stopService(): Unit = {
-    timeTrigger.stop()
-    scheduler.stop()
     flowExecutor.stop()
     Await.result(system.terminate(), 10 seconds)
     sec.stop()

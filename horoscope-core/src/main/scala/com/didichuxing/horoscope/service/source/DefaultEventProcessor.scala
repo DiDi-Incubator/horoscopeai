@@ -9,12 +9,14 @@ package com.didichuxing.horoscope.service.source
 import java.util.concurrent.{ConcurrentHashMap, Semaphore, TimeUnit}
 
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.{FlowEvent, FlowInstance}
+import com.didichuxing.horoscope.core.TraceStore
 import com.didichuxing.horoscope.runtime.convert.ValueTypeAdapter
-import com.didichuxing.horoscope.runtime.{IgnoredException, Value}
+import com.didichuxing.horoscope.runtime.{FlowExecutor, IgnoredException, Value}
 import com.didichuxing.horoscope.service.ApplicationContext
 import com.didichuxing.horoscope.service.source.EventProcessErrorCode._
 import com.didichuxing.horoscope.util.Utils._
 import com.didichuxing.horoscope.util.{Logging, PublicLog, Utils}
+import com.google.common.util.concurrent.RateLimiter
 import com.google.gson.{Gson, GsonBuilder}
 import com.google.protobuf.util.JsonFormat
 import com.typesafe.config.Config
@@ -27,72 +29,74 @@ import scala.util.{Failure, Success, Try}
 class DefaultEventProcessor(sourceName: String, params: Config)
                            (implicit ctx: ApplicationContext) extends EventProcessor with Logging {
 
-  implicit val ec = ctx.sourceExecutionContext.getExecutionContext()
-  val storeService = ctx.traceStore
-  val flowExecutor = ctx.flowExecutor
-  val scheduler = ctx.scheduler
+  implicit val ec: ExecutionContextExecutorService = ctx.sourceExecutionContext.getExecutionContext()
+  val storeService: TraceStore = ctx.traceStore
+  val flowExecutor: FlowExecutor = ctx.flowExecutor
   //反压超时时间，默认10秒
-  val backPressTimeout = configIntOrDefault(params, "backpress.timeout", 10)
-  //反压
-  var backPress: Semaphore = _
+  val backPressTimeout: Int = configIntOrDefault(params, "backpress.timeout", 10)
+  // 限流值, 默认10QPS
+  val backpressPermit: Int = configIntOrDefault(params, "backpress.permits", 10)
+  // 取值true时, 反压拒绝生效, 消息直接丢弃
+  val backpressReject: Boolean = Try(params.getBoolean("backpress.reject")).getOrElse(false)
+  val routineRecovery: Boolean = Try(params.getBoolean("recovery.enabled")).getOrElse(false)
+  val recoveryIntervalInSecond: Int = Try(params.getInt("recovery.interval")).getOrElse(300)
+  var rateLimiter: RateLimiter = _
   //pb转json
-  val jsonPrinter = JsonFormat.printer.omittingInsignificantWhitespace()
+  val jsonPrinter: JsonFormat.Printer = JsonFormat.printer.omittingInsignificantWhitespace()
   implicit val gson: Gson = new GsonBuilder()
     .registerTypeHierarchyAdapter(classOf[Value], new ValueTypeAdapter)
     .create()
-  //retry  eventId:retryCount
+  //retry eventId:retryCount
   val retryFlowEvents = new ConcurrentHashMap[String, Integer]()
-  //最大重试次数
-  val maxRetryCount = configIntOrDefault(params, "exec.retry", 1)
+  //最大重试次数, 默认重试1次
+  val maxRetryCount: Int = configIntOrDefault(params, "exec.retry", 1)
   //反压超时决绝服务日志
   val rejectLog = new PublicLog("map_traffic_horoscope_reject")
 
   override def start(): Unit = {
-    backPress = new Semaphore(Try(params.getInt("backpress.permits")).getOrElse(100), true)
+    rateLimiter = RateLimiter.create(backpressPermit)
   }
 
   override def stop(): Unit = {}
 
   override def putEvent(events: List[FlowEvent]): List[FlowEvent] = {
-    info(("msg", "available backpress"), ("source", sourceName), ("count", backPress.availablePermits()))
-    //获取反压令牌
+    // 获取反压令牌
     val eventSize = events.size
-    val backPressResult = backPress.tryAcquire(eventSize, backPressTimeout, TimeUnit.SECONDS)
-    if (backPressResult) {
+    val beginTime = System.currentTimeMillis()
+    val acquireResult = rateLimiter.tryAcquire(eventSize, backPressTimeout, TimeUnit.SECONDS)
+    if (acquireResult) {
+      val acquireTime = System.currentTimeMillis()
+      info(("msg", "acquire permit time"), ("source", sourceName), ("proc_time", s"${acquireTime - beginTime} ms"))
       var successMailbox = false
       try {
-        //批量放入mailbox
-        val beginTime = System.currentTimeMillis()
+        // 批量放入mailbox
         storeService.addEvents(sourceName, events.map(v => v.toBuilder))
         successMailbox = true
         val endTime = System.currentTimeMillis()
-        info(("msg", "add mailbox process time"), ("source", sourceName), ("proc_time", s"${endTime - beginTime} ms"))
+        info(("msg", "add mailbox time"), ("source", sourceName), ("proc_time", s"${endTime - acquireTime} ms"))
       } catch {
         case ex: Exception =>
           error(("msg", "add event to mailbox error"), ("ex", ex.getMessage))
-          //放入mailbox异常，释放反压令牌
-          backPress.release(eventSize)
       }
       if (successMailbox) {
         val results = ListBuffer[FlowEvent]()
-        //执行event
+        // 执行event
         for (flowEvent <- events) {
           exec(flowEvent)
           results.append(flowEvent)
         }
-        //返回成功的event
+        // 返回成功的event
         results.toList
       } else {
-        error(("msg", "add mailbox error"), ("available", backPress.availablePermits()))
+        error(("msg", "add mailbox error"), ("source", sourceName), ("event_size", eventSize))
         new Array[FlowEvent](eventSize).toList
       }
     } else {
-      error(("msg", "add mailbox error backpress timeout"), ("source", sourceName),
-        ("available", backPress.availablePermits()))
-      if (Try(params.getBoolean("backpress.reject")).getOrElse(false)) {
-        events.foreach(e => {
-          rejectLog.public(("flow_event", Value(e).toJson))
-        })
+      error(("msg", "add mailbox error backpress timeout"), ("source", sourceName), ("event_size", eventSize))
+      if (backpressReject) {
+        for (event <- events) {
+          rejectLog.public(("flow_event", Value(event).toJson))
+        }
         events
       } else {
         new Array[FlowEvent](eventSize).toList
@@ -101,12 +105,11 @@ class DefaultEventProcessor(sourceName: String, params: Config)
   }
 
   def exec(flowEvent: FlowEvent) {
-    //flow execute callback
+    // flow execute callback
     flowExecutor.execute(flowEvent).onComplete {
       case Success(flowInstance) =>
         onSuccess(flowInstance)
       case Failure(exception) =>
-        //flowEvent闭包
         onFail(flowEvent, exception)
     }
     debug(("msg", "event execute"), ("event", Value(flowEvent).toJson))
@@ -119,24 +122,15 @@ class DefaultEventProcessor(sourceName: String, params: Config)
         val fib = storeService.commitEvent(sourceName, flowInstance.toBuilder)
         if (fib == null) {
           error(("msg", "commit check event error"), ("instance", Value(flowInstance).toJson))
-          backPress.release()
         } else {
-//          debug(("msg", "event execute success"),
-//            ("instance", Value(fib).toJson), ("duration", s"${fib.getEndTime - fib.getStartTime} ms"))
           info(("msg", "event execute success"), ("source", sourceName),
             ("duration", s"${fib.getEndTime - fib.getStartTime} ms"))
           // 打印ODS分析日志
           ctx.odsLogger.log(flowInstance)
-
-          //不需要goto
-          backPress.release()
-
         }
       } else {
-        //warn：这里会直接丢弃，也就是可能出现mailbox里的消息未处理完成。需要重启服务后recovery重新执行。
-        //对于source消息，是否可以采用每隔一段时间扫描mailbox，发现有长时间未被执行的消息重新执行
-        //对于scheduler消息，是否可以触发一次集群整体的scheduler recovery
-        backPress.release()
+        error(("msg", "commit check error"), ("source", sourceName), ("event", Value(flowEvent).toJson))
+        //对于source消息, 采用每隔一段时间扫描mailbox，发现有长时间未被执行的消息重新执行
       }
     } catch {
       case ex: Exception =>
@@ -160,21 +154,20 @@ class DefaultEventProcessor(sourceName: String, params: Config)
         ignoreFailEvent(flowEvent)
 
       case err: ExecutionException if err.getCause.isInstanceOf[Error] =>
-        //Error异常不重试，如：不属于该分区
+        // Error异常不重试，如：不属于该分区
         error(("msg", "executor event error"), ("ex", printStackTraceStr(err)),
           ("event", Value(flowEvent).toJson))
-        backPress.release()
 
       case ex: Throwable =>
         error(("msg", "executor event error"), ("ex", printStackTraceStr(ex)), ("event", Value(flowEvent).toJson))
-        val retryCount = retryFlowEvents.getOrDefault(flowEvent.getEventId, 1)
+        val retryCount = retryFlowEvents.getOrDefault(flowEvent.getEventId, 0)
         if (retryCount >= maxRetryCount) {
           //反复尝试后依旧无法正常执行的flowEvent，会留在mailbox中
           error(("msg", "maximum retry limit is reached"), ("event", Value(flowEvent).toJson))
           ignoreFailEvent(flowEvent)
         } else {
           //重试等待100ms ~ 1000ms
-          Thread.sleep(retryCount * 100)
+          Thread.sleep(retryCount * 500)
           //内存里记录需要重试的flowEvent，以及重试次数，每次重试等待更长时间，直到重试次数上限
           //如果执行失败，继续重试执行
           retryFlowEvents.put(flowEvent.getEventId, retryCount + 1)
@@ -191,13 +184,12 @@ class DefaultEventProcessor(sourceName: String, params: Config)
     if (fib == null) {
       error(("msg", "commit event error"), ("instance", Value(instance).toJson))
     }
-    backPress.release()
   }
 
   override def putEventSync(flowEvent: FlowEvent): FlowInstance = {
     var result: FlowInstance = null
-    val backPressResult = backPress.tryAcquire(backPressTimeout, TimeUnit.SECONDS)
-    if (backPressResult) {
+    val acquireResult = rateLimiter.tryAcquire(backPressTimeout, TimeUnit.SECONDS)
+    if (acquireResult) {
       try {
         storeService.addEvent(sourceName, flowEvent.toBuilder)
         val f = flowExecutor.execute(flowEvent)
@@ -207,7 +199,6 @@ class DefaultEventProcessor(sourceName: String, params: Config)
           val fib = storeService.commitEvent(sourceName, flowInstance.toBuilder)
           if (fib == null) {
             error(("msg", "commit check event error"), ("instance", Value(flowInstance).toJson))
-            backPress.release()
             throw EventProcessException(CommitError)
           } else {
             debug(("msg", "event execute success"),
@@ -217,20 +208,16 @@ class DefaultEventProcessor(sourceName: String, params: Config)
             // 打印ODS分析日志
             ctx.odsLogger.log(flowInstance)
             result = fib.asInstanceOf[FlowInstance]
-            backPress.release()
           }
         } else {
-          backPress.release()
           throw EventProcessException(CheckError)
         }
       } catch {
         case ex: TimeoutException =>
           error(("msg", "time out"), ("ex", printStackTraceStr(ex)))
-          backPress.release()
           throw EventProcessException(TimeOutError, ex)
         case ex: Throwable =>
           error(("msg", "executor error"), ("ex", printStackTraceStr(ex)))
-          backPress.release()
           throw EventProcessException(ExecuteError, ex)
       }
     } else {

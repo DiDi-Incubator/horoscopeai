@@ -124,7 +124,6 @@ class DefaultResourceManager(implicit ctx: ApplicationContext) extends ResourceM
   implicit val config = ctx.config
   implicit val system = ctx.system
   implicit val zkClient = ctx.zkClient
-  implicit val scheduler = ctx.scheduler
   implicit val ec = ctx.sourceExecutionContext.getExecutionContext()
   var localParticipantId: String = ""
   //启动时，第一次选主的回调
@@ -218,17 +217,21 @@ class DefaultResourceManager(implicit ctx: ApplicationContext) extends ResourceM
     //参与者总数
     val size = parts.size
     //每个参与者负责的slot数量
-    val count =  slotCount / size
+    val count = slotCount / size
     //余数
     val rest = slotCount % size
     val partWithIdx = parts.zipWithIndex.filter(p => p._1.getParticipantId() == participant.getParticipantId())
     if (partWithIdx.size > 0) {
       val idx = partWithIdx(0)._2
-      val begin = idx * count
-      var end = begin + count
+      var begin = 0
+      var end = 0
       //最后一个将余数加上
-      if (rest > 0 && idx == (size - 1)) {
-        end += rest
+      if (rest > 0 && idx < rest) {
+        begin += idx * (count + 1)
+        end += begin + count + 1
+      } else {
+        begin += idx * count + rest
+        end = begin + count
       }
       Some(SlotRange(begin, end))
     } else {
@@ -347,8 +350,6 @@ class DefaultResourceManager(implicit ctx: ApplicationContext) extends ResourceM
     //监听zk,slaver注册
     val masterSelectorPath = zkClient.getClusterPath()
     zkWatcher = zkClient.watchNode(masterSelectorPath, SlaverListener)
-    //加载scheduler数据
-    scheduler.recovery(this)
     //开启ping
     ping()
     info(("msg", "i am master"), ("local", localParticipantId), ("participants", participants.values()))
@@ -443,7 +444,6 @@ class DefaultResourceManager(implicit ctx: ApplicationContext) extends ResourceM
       } else {
         //master直接变更，slaver通过发消息变更
         resetParticipants(reParticipants.values().toList)
-        scheduler.recovery(this)
       }
     }
   }
@@ -587,9 +587,7 @@ class DefaultResourceManager(implicit ctx: ApplicationContext) extends ResourceM
         info(("msg", "RegisterCompleteMessage"), ("participants", participants))
         //1. 更新participants
         resetParticipants(participants)
-        //2. scheduler recovery
-        scheduler.recovery(DefaultResourceManager.this)
-        //3. 开始运行
+        //2. 开始运行
         if (!leaderSelectorPromise.isCompleted) {
           leaderSelectorPromise.success(master)
         }
@@ -600,9 +598,7 @@ class DefaultResourceManager(implicit ctx: ApplicationContext) extends ResourceM
         info(("msg", "SlaverRestartMessage"), ("participants", participants))
         //1. 更新participants
         resetParticipants(participants)
-        //2. scheduler recovery
-        scheduler.recovery(DefaultResourceManager.this)
-        //3. 开始运行
+        //2. 开始运行
         if (!leaderSelectorPromise.isCompleted) {
           leaderSelectorPromise.success(master)
         }

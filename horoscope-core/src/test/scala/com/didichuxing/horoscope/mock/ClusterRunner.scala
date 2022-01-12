@@ -46,8 +46,6 @@ class ClusterRunner extends Logging {
       .withConfigStore(configStore)
       .withTraceStore(traceStore)
       .withSourceFactory("batchJsonKafka", Sources.kafka(EventBuilders.sourceEventBuilder()))
-      .withSourceFactory(SCH_SOURCE_FACTORY, Sources.scheduler(EventBuilders.schedulerSourceEventBuilder()))
-
     //start serverice
     info("horoscope begin start service")
     val worker = serviceBuilder.buildWorker()

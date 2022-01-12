@@ -35,7 +35,6 @@ class LocalRunner extends Logging {
     val flowManager = Horoscope.newLocalService()
       .withConfig(config)
       .withActorSystem(actorSystem)
-      .withSourceFactory(SCH_SOURCE_FACTORY, Sources.scheduler(EventBuilders.schedulerSourceEventBuilder()))
       .withSourceFactory("batchJsonKafka", Sources.kafka(EventBuilders.sourceEventBuilder()))
       .withSourceFactory("batchJsonDDMQ", new DDMQSourceFactory(DDMQSourceBuilder.builder()))
       .withSourceFactory("jsonHttp", Sources.http())

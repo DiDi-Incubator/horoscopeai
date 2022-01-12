@@ -31,6 +31,7 @@ import scala.concurrent.Future
 /**
  * http://wiki.intra.xiaojukeji.com/pages/viewpage.action?pageId=322779383
  */
+@deprecated(since = "0.6.3")
 class RocksDBScheduler(implicit ctx: ApplicationContext) extends Scheduler with Logging {
 
   implicit val config = ctx.config
