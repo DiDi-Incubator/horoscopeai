@@ -1,7 +1,7 @@
 strategy: default
 owners: wenxiang
-reviewers: weilunkai,chaiyi,liangguorong,wenxiang,huchengyi,liuguangyao
+reviewers: liangguorong,chaiyi,liuguangyao,zhanghenyuan,zhangkaiqi
 force: master
 refer: OE
-exceptSelfAccept: true
+exceptSelfAccept: false
 subCodeOwner: true

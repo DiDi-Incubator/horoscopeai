@@ -1,2 +1,2 @@
 # Horoscope Framework
-[architecture](./docs/img/architecture.png)
+![architecture](./docs/img/architecture.png)
