@@ -1,7 +1,7 @@
-strategy: default
-owners: wenxiang
-reviewers: liangguorong,chaiyi,liuguangyao,zhanghenyuan,zhangkaiqi
+strategy: ownerOne
+owners: wenxiang,liangguorong,chaiyi
+reviewers: liangguorong,chaiyi,liuguangyao,zhanghengyuan,zhangkaiqi
 force: master
 refer: OE
-exceptSelfAccept: false
+exceptSelfAccept: true
 subCodeOwner: true
