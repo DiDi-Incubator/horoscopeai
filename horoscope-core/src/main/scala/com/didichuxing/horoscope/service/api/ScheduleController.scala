@@ -158,7 +158,7 @@ class ScheduleController(sources: mutable.Map[String, Source])
       .setFlowName(flowName)
       .setTraceId(traceId)
     data match {
-      case json: String =>
+      case json: String if json != null =>
         val value = gson.fromJson(json, classOf[Value])
         builder.putArgument("@", TraceVariable.newBuilder().setValue(value.as[FlowValue]).build()).build()
       case params: Map[String, String] =>

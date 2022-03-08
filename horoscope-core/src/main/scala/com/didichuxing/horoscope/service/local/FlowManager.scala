@@ -10,7 +10,7 @@ import com.didichuxing.horoscope.core.Source
 import com.didichuxing.horoscope.service.ApplicationContext
 import com.didichuxing.horoscope.service.source.EventBusFactory
 import com.didichuxing.horoscope.util.Logging
-import com.typesafe.config.Config
+import com.typesafe.config.{Config, ConfigFactory}
 
 import scala.collection.JavaConversions._
 import scala.collection.mutable
@@ -53,7 +53,7 @@ class FlowManager(implicit ctx: ApplicationContext) extends Logging {
     val sourceFactory = sourceFactories.get(factoryName)
     if (sourceFactory.isDefined) {
       val source = sourceFactory.get.newSource(sourceConfig)
-      val parameter = sourceConfig.getConfig("parameter")
+      val parameter = Try(sourceConfig.getConfig("parameter")).getOrElse(ConfigFactory.empty())
       source.start(EventBusFactory.newEventBus(sourceName, flowName, parameter))
       info(("msg", s"$sourceName has start"))
       sources.put(sourceName, source)

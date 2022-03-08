@@ -1,0 +1,17 @@
+# /demo/quickstart
+
+***
+  user_name <- @.user_name
+  text_length <- @.text.length()
+  <> {
+    ? is_valid = text_length < 150
+    => {
+      text_is_valid <- true
+    }
+
+    ? is_not_valid = text_length >= 150
+    => {
+      text_is_valid <- false
+    }
+  }
+***

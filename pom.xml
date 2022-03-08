@@ -49,6 +49,7 @@
         <module>horoscope-console</module>
         <module>horoscope-analysis</module>
         <module>horoscope-analysis-offline</module>
+        <module>horoscope-examples</module>
     </modules>
 
     <dependencies>
