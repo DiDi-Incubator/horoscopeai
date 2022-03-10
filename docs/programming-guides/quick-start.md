@@ -67,19 +67,26 @@ curl --location --request POST 'http://localhost:8062/api/schedule/info/_/now/de
 ```json
 {
     "user_name": "Jane",
-    "text": "Text"
+    "text": "Hello world"
 }
 ```
 
 ## Flow定义
-```json
+```text
 # /demo/quickstart // 这是flow名称, 可以是任意格式, 但星盘服务一般要求为类似文件的url格式
 ***
   user_name <- @.user_name // @表示输入参数
   text_length <- @.text.length()
   <> { // 两个括号是if语句, 由于FlowDSL流程图语言, 这里用<>表达分支
-    ? is_valid = text_length < 150 // ?后面的is_valid是这个分支的tag, 用于埋点, 在星盘的概念中, 叫做choice
-    => {}
+    ? is_valid = text_length < 150 // 问号后面的is_valid是这个分支的tag, 用于埋点, 在星盘的概念中, 叫做choice
+    => {
+    text_is_valid <- true
+    }
+    
+    ? is_not_valid = text_length >= 150
+    => {
+    text_is_valid <- false
+    }    
   }
 ***
 ```
@@ -115,7 +122,7 @@ class DemoLocalService extends Logging {
 ```
 
 ## 服务配置
-星盘服务配置采用typesafe config的风格
+星盘服务配置采用[typesafe config](https://github.com/lightbend/config)的风格
 ```config
 horoscope {
   sources = [
