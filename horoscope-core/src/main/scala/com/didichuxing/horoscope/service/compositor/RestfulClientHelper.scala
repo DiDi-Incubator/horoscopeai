@@ -1,42 +1,35 @@
-/*
- * Copyright (C) 2020 DiDi Inc. All Rights Reserved.
- * Authors: huchengyi@didiglobal.com
- * Description:
- */
-
-package com.didichuxing.horoscope.compositor
-
-import java.util.concurrent.ScheduledExecutorService
+package com.didichuxing.horoscope.service.compositor
 
 import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
-import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpMethods, HttpRequest, HttpResponse, Uri}
+import akka.http.scaladsl.model._
 import akka.stream.ActorMaterializer
 import akka.util.ByteString
 import com.didichuxing.horoscope.runtime.convert.ValueTypeAdapter
-import com.didichuxing.horoscope.runtime.{IgnoredException, Value, ValueDict}
-import com.didichuxing.horoscope.util.AsyncUtil.retry
+import com.didichuxing.horoscope.runtime.{Value, ValueDict}
 import com.didichuxing.horoscope.util.Logging
 import com.google.gson.GsonBuilder
 import com.typesafe.config.Config
 
+import java.util.concurrent.ScheduledExecutorService
+import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Try
-import scala.collection.JavaConverters._
 
 class RestfulClientHelper(config: Config)(
   implicit actorSystem: ActorSystem,
   actorMaterializer: ActorMaterializer,
   executor: ExecutionContext,
   scheduleExecutor: ScheduledExecutorService) extends Logging {
+  import com.didichuxing.horoscope.util.AsyncUtil._
   implicit val gson = new GsonBuilder()
     .registerTypeHierarchyAdapter(classOf[Value], new ValueTypeAdapter)
     .create()
 
-  private val retryNum: Int = Try(config.getInt("client.retry-attempts")).getOrElse(0)
-  private val retryInterval: Int = Try(config.getInt("client.retry-interval")).getOrElse(500)
+  private val retryNum: Int = Try(config.getInt("horoscope.compositor.restful.client.retry-attempts")).getOrElse(0)
+  private val retryInterval: Int = Try(config.getInt("horoscope.compositor.client.retry-interval")).getOrElse(500)
   private val nonRetriedErrCode: Set[Int] = Try(
-    config.getIntList("client.ignored-error-code").asScala.map(_.toInt).toSet
+    config.getIntList("horoscope.compositor.client.ignored-error-code").asScala.map(_.toInt).toSet
   ).getOrElse(Set())
 
   // 在日志中显示的字符串长度

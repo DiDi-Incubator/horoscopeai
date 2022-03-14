@@ -1,12 +1,13 @@
-package com.didichuxing.horoscope.compositor
+package com.didichuxing.horoscope.service.compositor
 
 import com.didichuxing.horoscope.core.{Compositor, CompositorFactory}
+import com.didichuxing.horoscope.runtime.Implicits.gson
 import com.didichuxing.horoscope.runtime.{Text, Value, ValueDict}
 import com.didichuxing.horoscope.util.Logging
-import com.didichuxing.horoscope.runtime.Implicits.gson
 import com.typesafe.config.ConfigFactory
-import java.util.Properties
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerRecord}
+
+import java.util.Properties
 import scala.concurrent.{ExecutionContext, Future, Promise}
 
 class KafkaCompositor(producer: KafkaProducer[Array[Byte], Array[Byte]], topic: String) (implicit ec: ExecutionContext)

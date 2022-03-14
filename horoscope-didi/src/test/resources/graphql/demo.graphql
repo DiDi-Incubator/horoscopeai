@@ -1,7 +1,0 @@
-query ($order_id: Long!) {
-    order(orderId: $order_id, orderType: GS) {
-        orderBase {
-            orderId
-        }
-    }
-}

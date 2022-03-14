@@ -1,23 +1,16 @@
-/*
- * Copyright (C) 2020 DiDi Inc. All Rights Reserved.
- * Authors: huchengyi@didiglobal.com
- * Description:
- */
-
 package com.didichuxing.horoscope.util
-
-import java.util.concurrent.{ExecutorService, Executors, ScheduledExecutorService, TimeUnit}
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder
 
+import java.util.concurrent.{ExecutorService, Executors, ScheduledExecutorService, TimeUnit}
 import scala.concurrent.duration.Duration
 import scala.concurrent.{ExecutionContext, ExecutionContextExecutorService}
 
 object ThreadUtil extends Logging {
 
   def createThreadPool(name: String,
-                       size: Int = 0,
-                       isDaemon: Boolean = true): ExecutionContextExecutorService = {
+    size: Int = 0,
+    isDaemon: Boolean = true): ExecutionContextExecutorService = {
     val threadFactory = new ThreadFactoryBuilder()
       .setDaemon(isDaemon)
       .setNameFormat(s"$name-thread-%d")
@@ -33,8 +26,8 @@ object ThreadUtil extends Logging {
   }
 
   def createScheduledThreadPool(name: String,
-                                size: Int = 0,
-                                isDaemon: Boolean = true): ScheduledExecutorService = {
+    size: Int = 0,
+    isDaemon: Boolean = true): ScheduledExecutorService = {
     val threadFactory = new ThreadFactoryBuilder()
       .setDaemon(isDaemon)
       .setNameFormat(s"$name-thread-%d")

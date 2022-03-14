@@ -1,13 +1,6 @@
-/*
- * Copyright (C) 2020 DiDi Inc. All Rights Reserved.
- * Authors: huchengyi@didiglobal.com
- * Description:
- */
-
 package com.didichuxing.horoscope.util
 
 import java.util.concurrent.{ScheduledExecutorService, TimeUnit}
-
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContext, Future, Promise}
 

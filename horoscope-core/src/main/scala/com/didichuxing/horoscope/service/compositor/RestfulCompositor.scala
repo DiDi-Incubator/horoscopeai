@@ -1,26 +1,13 @@
-/*
- * Copyright (C) 2020 DiDi Inc. All Rights Reserved.
- * Authors: huchengyi@didiglobal.com
- * Description:
- */
-
-package com.didichuxing.horoscope.compositor
-
-import java.util.concurrent.{LinkedBlockingQueue, ScheduledExecutorService, ThreadPoolExecutor, TimeUnit}
+package com.didichuxing.horoscope.service.compositor
 
 import akka.actor.ActorSystem
-import akka.http.scaladsl.Http
-import akka.http.scaladsl.model._
 import akka.stream.ActorMaterializer
-import akka.util.ByteString
 import com.didichuxing.horoscope.core.{Compositor, CompositorFactory}
-import com.didichuxing.horoscope.runtime.convert.ValueTypeAdapter
 import com.didichuxing.horoscope.runtime.{Value, ValueDict}
 import com.didichuxing.horoscope.util.Logging
-import com.didichuxing.horoscope.util.AsyncUtil._
-import com.google.gson.GsonBuilder
 import com.typesafe.config.Config
 
+import java.util.concurrent.ScheduledExecutorService
 import scala.concurrent.{ExecutionContext, Future}
 
 class RestfulCompositor(
@@ -59,8 +46,7 @@ class RestfulCompositorFactory(config: Config)(
   override def name(): String = "restful"
 
   /**
-   * @param code: method[get/post] http://@{url}/${link}\n${post_body}
-   *              @{url}: url will be from apollo config or local config
+   * @param code: method[get/post] http://url/${link}\n${post_body}
    *              ${variable}: variable will be filled at runtime
    * @return
    */

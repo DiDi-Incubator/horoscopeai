@@ -1,14 +1,9 @@
-/*
- * Copyright (C) 2020 DiDi Inc. All Rights Reserved.
- * Authors: huchengyi@didiglobal.com
- * Description:
- */
+package com.didichuxing.horoscope.service.compositor
 
-package com.didichuxing.horoscope.compositor
+import com.didichuxing.horoscope.runtime.{NULL, Text, ValueDict}
+import com.didichuxing.horoscope.service.compositor.RestfulCompositorConfig.RestfulConfigInFlow
 
 import java.net.URLEncoder
-import com.didichuxing.horoscope.runtime.{NULL, Text, ValueDict}
-import com.didichuxing.horoscope.compositor.RestfulCompositorConfig.RestfulConfigInFlow
 import scala.util.Try
 import scala.util.matching.Regex
 
