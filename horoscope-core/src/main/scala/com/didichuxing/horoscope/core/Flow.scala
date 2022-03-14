@@ -1,9 +1,3 @@
-/*
- * Copyright (C) 2020 DiDi Inc. All Rights Reserved.
- * Authors: wenxiang@didiglobal.com
- * Description:
- */
-
 package com.didichuxing.horoscope.core
 
 import com.didichuxing.horoscope.core.Flow.{Topic, TopicFiled}
@@ -11,7 +5,6 @@ import com.didichuxing.horoscope.core.FlowConf._
 import com.didichuxing.horoscope.core.FlowDslMessage.FlowDef
 import com.didichuxing.horoscope.dsl.FlowBuilder
 import com.didichuxing.horoscope.runtime.expression.{BuiltIn, Expression}
-import com.didichuxing.horoscope.util.FlowChart
 
 import scala.collection.SortedSet
 import scala.collection.mutable.ArrayBuffer
@@ -34,8 +27,6 @@ class Flow(val flowDef: FlowDef, val flowConf: FlowConf)(
   def isCompatible: Boolean = flowDef.getConfigMap.getOrElse("mode", "") == "compatible"
 
   def isLogEnabled: Boolean = flowDef.getConfigMap.getOrElse("log", "") == "enabled"
-
-  def chart: FlowChart = new FlowChart(this)
 
   var totalTopics: Map[String, Topic] = _
 

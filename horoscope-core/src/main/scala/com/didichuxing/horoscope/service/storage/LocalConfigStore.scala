@@ -20,7 +20,7 @@ class LocalConfigStore extends ConfigStore {
     Thread.currentThread().getContextClassLoader, "callback"
   ).getConfigList("callbacks").asScala.toList).getOrElse(Nil)
 
-  import ZookeeperConfigStore._
+  import com.didichuxing.horoscope.util.Constants._
 
   override def getConf(name: String, confType: String): Config = {
     confType match {

@@ -2,12 +2,10 @@ package com.didichuxing.horoscope.store
 
 import java.io.File
 import java.nio.file.Paths
-import java.util.NoSuchElementException
 
 import akka.http.scaladsl.server.Route
 import akka.http.scaladsl.testkit.ScalatestRouteTest
 import com.didichuxing.horoscope.core.{ConfigStore, FileStore}
-import com.didichuxing.horoscope.runtime.LocalJythonBuiltInV2Suite
 import com.didichuxing.horoscope.service.storage.GitFlowStore
 import com.didichuxing.horoscope.util.FileUtils
 import com.google.common.io.Resources
@@ -24,7 +22,6 @@ class GitFlowStoreSuite extends FunSuite
   import akka.http.scaladsl.model._
   import spray.json._
   import DefaultJsonProtocol._
-  import com.didichuxing.horoscope.service.storage.ZookeeperConfigStore._
 
   private val configStore = mock[ConfigStore]
   private val uri = Resources.getResource("infoflow").toURI

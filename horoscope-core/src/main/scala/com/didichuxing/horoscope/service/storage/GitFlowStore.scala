@@ -9,7 +9,7 @@ import com.didichuxing.horoscope.core.FlowDslMessage.{CompositorDef, FlowDef}
 import com.didichuxing.horoscope.core._
 import com.didichuxing.horoscope.dsl.FlowCompiler
 import com.didichuxing.horoscope.runtime.experiment.{ControllerFactory, ExperimentController}
-import com.didichuxing.horoscope.runtime.expression.{BuiltIn, DefaultBuiltIn, Expression, LocalJythonBuiltInV2}
+import com.didichuxing.horoscope.runtime.expression.{BuiltIn, DefaultBuiltIn, Expression, LocalJythonBuiltIn}
 import com.didichuxing.horoscope.util.FlowConfParser._
 import com.didichuxing.horoscope.util.{FlowGraph, Logging, Utils}
 import org.antlr.v4.runtime.CharStreams
@@ -29,7 +29,7 @@ class GitFlowStore(
   extBuiltIn: Option[BuiltIn] = None
 ) extends FlowStore with ConfigChangeListener with ConfigChecker with Logging {
   import GitFlowStore._
-  import ZookeeperConfigStore._
+  import com.didichuxing.horoscope.util.Constants._
 
   // flowName -> FlowDef
   private var flowDefMap: Map[String, FlowDef] = Map.empty
@@ -165,11 +165,11 @@ class GitFlowStore(
 
   private def loadBuiltin(url: String = ""): Unit = {
     val newValue = if (extBuiltIn.isDefined) {
-      new LocalJythonBuiltInV2(fileStore, url)
+      new LocalJythonBuiltIn(fileStore, url)
         .mergeFrom(extBuiltIn.get)
         .mergeFrom(DefaultBuiltIn.defaultBuiltin)
     } else {
-      new LocalJythonBuiltInV2(fileStore, url)
+      new LocalJythonBuiltIn(fileStore, url)
         .mergeFrom(DefaultBuiltIn.defaultBuiltin)
     }
 
@@ -246,9 +246,6 @@ class GitFlowStore(
       }
     )
   }
-
-
-
 }
 
 object GitFlowStore {
@@ -311,5 +308,34 @@ object GitFlowStore {
     })
 
     newConfigs
+  }
+
+  def checkLogConf(config: Config): Unit = {
+    val logConf = config.parseLogConf()
+    val flows = logConf.fields.filterNot(_.`type` == "tag").map(_.flow).toSet
+    val tagFlows = logConf.fields.filter(_.`type` == "tag").map(_.flow).toSet
+    val notTagged = flows.find(!tagFlows.contains(_))
+    assert(notTagged.isEmpty, s"no tag is defined for flow ${notTagged.get}")
+    val fields = logConf.fields.map(_.name)
+    assert(fields.distinct.length == fields.length, "config has duplicate field name")
+  }
+
+  def checkConfName(name: String, config: Config): Unit = {
+    val contentName = config.getString("name")
+    assert(contentName == name, "name in content is wrong")
+  }
+
+  // ensure that priorities are not duplicated and experimental flow sum do not exceed 1
+  def checkExperimentConf(config: Config, existing: Seq[Config]): Unit = {
+    val currentName = config.getString("name")
+    val total = Seq(config) ++ existing.filterNot(_.getString("name") == currentName)
+    val trafficSum = total.map { conf =>
+      val enabled = conf.getBoolean("enabled")
+      val traffic = conf.getIntList("traffic").asScala
+      val range = traffic(1) - traffic.head
+      (enabled, range)
+    }.filter(_._1).map(_._2).sum
+    val priorities = total.map(_.getInt("priority"))
+    assert(priorities.toSet.size == priorities.length, s"duplicate experiment priority")
   }
 }

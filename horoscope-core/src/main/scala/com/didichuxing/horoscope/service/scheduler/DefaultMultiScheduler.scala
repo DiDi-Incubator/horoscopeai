@@ -12,8 +12,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import com.didichuxing.horoscope.core.EventBus
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowEvent
 import com.didichuxing.horoscope.service.ApplicationContext
-import com.didichuxing.horoscope.service.resource.SlotRange
-import com.didichuxing.horoscope.util.Utils.{getClusterSlotCount, printStackTraceStr}
+import com.didichuxing.horoscope.util.Utils.printStackTraceStr
 import com.didichuxing.horoscope.util.{Logging, SystemLog}
 import com.typesafe.config.Config
 
@@ -22,17 +21,12 @@ import scala.collection.mutable.ListBuffer
 import scala.math._
 import scala.util.Try
 
-/**
- * source启动后注册eventBus，
- *
- * @param ctx
- */
 class DefaultMultiScheduler(implicit ctx: ApplicationContext) extends MultiScheduler with Logging {
 
   val ec = ctx.sourceExecutionContext.getExecutionContext()
   val traceStore = ctx.traceStore
   val runFutures = TrieMap.empty[String, Future[Unit]]
-  val slotCount = getClusterSlotCount(ctx.config)
+  val slotCount = 16384
 
   override def start(source: String, params: Config, eventBus: EventBus): Unit = {
     val schEnable = Try(params.getBoolean("scheduler.enable")).getOrElse(false)
@@ -49,43 +43,31 @@ class DefaultMultiScheduler(implicit ctx: ApplicationContext) extends MultiSched
       SystemLog.create()
       val status = new AtomicBoolean(false)
       if (status.compareAndSet(false, true)) {
-        val resourceManager = ctx.resourceManager
         while (status.get() && !Thread.currentThread().isInterrupted) {
           try {
             val backpress = Try(params.getInt("backpress.permits")).getOrElse(100)
             val limit = min(2, max(1, backpress / 5))
-            val serverCount = if (resourceManager == null) 1 else resourceManager.getParticipants().size
-            val slotRange = if (resourceManager == null) {
-              debug(("msg", "local mode"))
-              Some(SlotRange(0, 1))
-            } else {
-              resourceManager.getSlotRange(resourceManager.local())
+            val serverCount = 1
+            val slot = 0
+            val timestamp = System.currentTimeMillis()
+            var commitCount: Long = 0
+            if (status.get()) {
+              val successEvents = poll(source, eventBus, slot, timestamp, limit)
+              val count = traceStore.commitSchedulerEvents(source, slot, successEvents)
+              if (count != successEvents.size) {
+                warn(("msg", "multi scheduler commit error"),
+                  ("success size", successEvents.size), ("commit size", count))
+              }
+              commitCount += count
             }
-            if (slotRange.isDefined) {
-              val timestamp = System.currentTimeMillis()
-              var commitCount: Long = 0
-              for (slot <- slotRange.get.begin until slotRange.get.end) {
-                if (status.get()) {
-                  val successEvents = poll(source, eventBus, slot, timestamp, limit)
-                  val count = traceStore.commitSchedulerEvents(source, slot, successEvents)
-                  if (count != successEvents.size) {
-                    warn(("msg", "multi scheduler commit error"),
-                      ("success size", successEvents.size), ("commit size", count))
-                  }
-                  commitCount += count
-                }
-              }
-              val endTime = System.currentTimeMillis()
-              val procTime = endTime - timestamp
-              info(("msg", "multi scheduler poll commit"), ("source", source), ("slotRange", slotRange),
-                ("timestamp", timestamp), ("limit", limit), ("count", commitCount), ("proc_time", s"${procTime}ms"))
-              val factor = Try(params.getInt("scheduler.factor")).getOrElse(3)
-              val interval = slotCount / serverCount / factor
-              if (procTime < interval) {
-                Thread.sleep(interval - procTime)
-              }
-            } else {
-              error(("msg", "multi scheduler slot range error"), ("source", source))
+            val endTime = System.currentTimeMillis()
+            val procTime = endTime - timestamp
+            info(("msg", "multi scheduler poll commit"), ("source", source),
+              ("timestamp", timestamp), ("limit", limit), ("count", commitCount), ("proc_time", s"${procTime}ms"))
+            val factor = Try(params.getInt("scheduler.factor")).getOrElse(3)
+            val interval = slotCount / serverCount / factor
+            if (procTime < interval) {
+              Thread.sleep(interval - procTime)
             }
           } catch {
             case iex: InterruptedException =>

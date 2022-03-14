@@ -14,9 +14,7 @@ import akka.http.scaladsl.server.ExceptionHandler
 import akka.stream.ActorMaterializer
 import com.didichuxing.horoscope.core.Source
 import com.didichuxing.horoscope.service.ApplicationContext
-import com.didichuxing.horoscope.service.cluster.FlowClient
 import com.didichuxing.horoscope.util.Logging
-import com.didichuxing.horoscope.service.storage.{ZkSourceStore, ZookeeperClusterStore}
 import com.didichuxing.horoscope.util.Utils._
 
 import scala.collection.mutable
@@ -31,7 +29,7 @@ class HttpServer(implicit ctx: ApplicationContext) extends Logging {
   implicit val materializer = ActorMaterializer()
   private var bindingFuture: Future[ServerBinding] = _
 
-  def start(sources: mutable.Map[String, Source], client: FlowClient = null): Unit = {
+  def start(sources: mutable.Map[String, Source]): Unit = {
     implicit def apiExceptionHandler = ExceptionHandler {
       case cause: Throwable =>
         extractUri { _ =>
@@ -40,17 +38,7 @@ class HttpServer(implicit ctx: ApplicationContext) extends Logging {
     }
 
     val scheduleCtrl = new ScheduleController(sources)
-    val route = if (client == null) {
-      pathPrefix("api") {
-        concat(
-          pathPrefix("schedule") {
-            scheduleCtrl.api
-          }
-        )
-      }
-    } else {
-      val clusterStore = ZookeeperClusterStore(ctx.zkClient, ctx.resourceManager)
-      val sourceStore = new ZkSourceStore(ctx.zkClient, client)
+    val route = {
       pathPrefix("api") {
         concat(
           pathPrefix("schedule") {
@@ -61,24 +49,6 @@ class HttpServer(implicit ctx: ApplicationContext) extends Logging {
           },
           pathPrefix("expression") {
             ctx.flowStore.getBuiltIn.api
-          },
-          pathPrefix("sources") {
-            sourceStore.api
-          },
-          pathPrefix("clusters") {
-            clusterStore.api
-          },
-          pathPrefix("storage") {
-            ctx.traceStore.api
-          },
-          pathPrefix("logs") {
-            ctx.odsLogger.api
-          },
-          pathPrefix("file") {
-            ctx.fileStore.api
-          },
-          pathPrefix("choreography") {
-            ctx.configStore.api
           }
         )
       }

@@ -23,6 +23,7 @@ import scala.collection.JavaConversions._
 import scala.util.Try
 import Implicits.gson
 
+case class SeqFlowEvent(seq: Int, flowEvent: FlowEvent)
 /**
  * 定义了所有的原始source消息转换过程
  */

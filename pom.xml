@@ -43,12 +43,7 @@
     </properties>
 
     <modules>
-        <module>hbase-client</module>
         <module>horoscope-core</module>
-        <module>horoscope-didi</module>
-        <module>horoscope-console</module>
-        <module>horoscope-analysis</module>
-        <module>horoscope-analysis-offline</module>
         <module>horoscope-examples</module>
     </modules>
 

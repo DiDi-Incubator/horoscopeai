@@ -10,7 +10,6 @@ import com.didichuxing.horoscope.core.{FlowStore, Horoscope, Sources}
 import com.didichuxing.horoscope.service.local.FlowManager
 import com.didichuxing.horoscope.service.source.{EventBuilders, HttpSourceFactory}
 import com.didichuxing.horoscope.service.storage.{GitFlowStore, LocalConfigStore, LocalFileStore}
-import com.didichuxing.horoscope.util.Constants.SCH_SOURCE_FACTORY
 import com.didichuxing.horoscope.util.{Logging, SystemLog}
 import com.typesafe.config.{Config, ConfigFactory}
 

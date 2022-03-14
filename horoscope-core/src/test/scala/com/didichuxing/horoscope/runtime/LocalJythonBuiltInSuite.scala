@@ -1,19 +1,14 @@
 package com.didichuxing.horoscope.runtime
 
-import java.io.{File, IOException}
-import java.nio.file.attribute.BasicFileAttributes
-
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.{BeforeAndAfterAll, FunSuite, Matchers}
 import com.didichuxing.horoscope.core.FileStore
 import com.google.common.io.Resources
 import java.nio.file.{FileVisitResult, FileVisitor, Files, Path, Paths}
 
-import com.didichuxing.horoscope.runtime.expression.{BuiltIn, Expression, LocalJythonBuiltInV2}
+import com.didichuxing.horoscope.runtime.expression.{BuiltIn, Expression, LocalJythonBuiltIn}
 
-import scala.collection.mutable.ListBuffer
-
-class LocalJythonBuiltInV2Suite extends FunSuite with Matchers with MockFactory with BeforeAndAfterAll {
+class LocalJythonBuiltInSuite extends FunSuite with Matchers with MockFactory with BeforeAndAfterAll {
   import com.didichuxing.horoscope.util.FileUtils._
   private val fileStore = mock[FileStore]
   private val uri = Resources.getResource("").toURI
@@ -26,7 +21,7 @@ class LocalJythonBuiltInV2Suite extends FunSuite with Matchers with MockFactory 
     (fileStore.listFiles _).expects(url).anyNumberOfTimes()
       .returning((basePath + "/" + url, walkFileTree(basePath.resolve(url), Set(".py"))))
 
-    builtIn = new LocalJythonBuiltInV2(fileStore, url)
+    builtIn = new LocalJythonBuiltIn(fileStore, url)
   }
 
   test("path2UDFName") {

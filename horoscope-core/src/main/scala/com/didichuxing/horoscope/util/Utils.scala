@@ -10,7 +10,6 @@ import java.io._
 import java.net.{Inet4Address, NetworkInterface}
 import java.util.UUID
 import java.util.zip.CRC32
-
 import akka.actor.ActorSelection
 import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.server.StandardRoute
@@ -18,8 +17,8 @@ import akka.util.Timeout
 import akka.pattern.ask
 import com.didichuxing.horoscope.runtime.{Binary, NumberValue, Text, Value}
 import com.typesafe.config.Config
-import org.apache.hadoop.hbase.util.Bytes
 
+import java.nio.charset.Charset
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.concurrent.duration.FiniteDuration
 import scala.util.{Failure, Success, Try}
@@ -92,18 +91,10 @@ object Utils extends Logging {
   def getSlot(traceId: String, slotCount: Int): Int = {
     val crc32 = new CRC32()
     crc32.reset()
-    crc32.update(Bytes.toBytes(traceId))
+    crc32.update(traceId.getBytes(Charset.forName("UTF-8")))
     val hash = crc32.getValue
     val slot = hash % slotCount
     slot.toInt
-  }
-
-  def getClusterSlotCount(config: Config): Int = {
-    Try(config.getInt("horoscope.rm.slot-count")).getOrElse(Constants.CLUSTER_SLOT_COUNT)
-  }
-
-  def getSlotBatchSize(config: Config): Int = {
-    Try(config.getInt("horoscope.rm.slot-batch")).getOrElse(Constants.SCH_BATCH_SIZE)
   }
 
   /**
@@ -112,7 +103,6 @@ object Utils extends Logging {
    * @return
    */
   def getEventId(): String = {
-    //UUID.randomUUID().toString.replace("-", "")
     ObjectID.next
   }
 

@@ -1,9 +1,3 @@
-/*
- * Copyright (C) 2019 DiDi Inc. All Rights Reserved.
- * Authors: huchengyi@didiglobal.com
- * Description:
- */
-
 package com.didichuxing.horoscope.core
 
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.{FlowEvent, FlowInstance}

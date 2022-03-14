@@ -11,7 +11,6 @@ import com.didichuxing.horoscope.core.{ConfigStore, FileStore, FlowStore, OdsLog
 import com.didichuxing.horoscope.runtime.FlowExecutor
 import com.didichuxing.horoscope.runtime.expression.BuiltIn
 import com.didichuxing.horoscope.service.api.HttpServer
-import com.didichuxing.horoscope.service.resource.{ResourceManager, ZkClient}
 import com.didichuxing.horoscope.service.scheduler.MultiScheduler
 import com.didichuxing.horoscope.service.source.SourceExecutionContext
 import com.typesafe.config.Config
@@ -33,17 +32,10 @@ class ApplicationContext {
   private var sec: SourceExecutionContext = _
   private var bi: BuiltIn = _
   private var fs: FlowStore = _
-  private var rm: ResourceManager = _
-  private var zkc: ZkClient = _
   private var hss: HttpServer = _
   private var ods: OdsLogger = _
   private var fls: FileStore = _
   private var cfs: ConfigStore = _
-
-  def withResourceManager(resourceManager: ResourceManager): this.type = {
-    rm = resourceManager
-    this
-  }
 
   def withFlowExecutor(flowExecutor: FlowExecutor): this.type = {
     fe = flowExecutor
@@ -90,11 +82,6 @@ class ApplicationContext {
     this
   }
 
-  def withZKClient(zkClient: ZkClient): this.type = {
-    zkc = zkClient
-    this
-  }
-
   def withHttpServer(httpServer: HttpServer): this.type = {
     hss = httpServer
     this
@@ -132,10 +119,6 @@ class ApplicationContext {
   def builtIn: BuiltIn = bi
 
   def flowStore: FlowStore = fs
-
-  def resourceManager: ResourceManager = rm
-
-  def zkClient: ZkClient = zkc
 
   def httpServer: HttpServer = hss
 
