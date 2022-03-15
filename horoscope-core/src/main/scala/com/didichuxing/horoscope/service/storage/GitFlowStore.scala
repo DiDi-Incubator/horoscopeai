@@ -257,7 +257,8 @@ object GitFlowStore {
     private val cf: mutable.Map[String, CompositorFactory] = mutable.Map[String, CompositorFactory]()
     private var bi: Option[BuiltIn] = None
     private var cs: ConfigStore = _
-    private var ecf: mutable.Map[String, ExperimentControllerFactory] = mutable.Map[String, ExperimentControllerFactory]()
+    private var ecf: mutable.Map[String, ExperimentControllerFactory] =
+      mutable.Map[String, ExperimentControllerFactory]()
     private var fs: FileStore = _
 
     def build(): FlowStore = {
