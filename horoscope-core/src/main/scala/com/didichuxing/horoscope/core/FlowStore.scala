@@ -1,7 +1,6 @@
 package com.didichuxing.horoscope.core
 
 import akka.http.scaladsl.server.Route
-import com.didichuxing.horoscope.runtime.experiment.ExperimentController
 import com.didichuxing.horoscope.runtime.expression.BuiltIn
 import com.didichuxing.horoscope.util.FlowGraph
 

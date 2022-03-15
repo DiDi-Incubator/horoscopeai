@@ -2,8 +2,7 @@ package com.didichuxing.horoscope.util
 
 import com.didichuxing.horoscope.core.FlowConf._
 import com.didichuxing.horoscope.runtime.experiment.ABTestController._
-import com.didichuxing.horoscope.runtime.experiment.ExperimentController.FlowOption
-import com.didichuxing.horoscope.runtime.{Implicits, Value}
+import com.didichuxing.horoscope.core.ExperimentController.FlowOption
 import com.typesafe.config.Config
 
 import scala.collection.JavaConverters._

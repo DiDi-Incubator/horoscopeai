@@ -1,13 +1,14 @@
-package com.didichuxing.horoscope.runtime.experiment
+package com.didichuxing.horoscope.core
 
+import com.didichuxing.horoscope.core.ExperimentController._
 import com.didichuxing.horoscope.core.FlowRuntimeMessage._
-import com.didichuxing.horoscope.runtime.experiment.ExperimentController._
 import com.didichuxing.horoscope.runtime.expression.{BuiltIn, Expression}
 import com.didichuxing.horoscope.runtime.{Value, ValueDict}
 import com.typesafe.config.Config
+
 import scala.collection.JavaConverters._
 
-trait ControllerFactory {
+trait ExperimentControllerFactory {
   def name: String
 
   def create(config: Config)(builtIn: BuiltIn): ExperimentController

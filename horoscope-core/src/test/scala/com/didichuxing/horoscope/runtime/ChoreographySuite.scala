@@ -2,15 +2,13 @@ package com.didichuxing.horoscope.runtime
 
 import java.nio.file.Paths
 import java.util.concurrent.Callable
-
 import akka.actor.ActorSystem
-import com.didichuxing.horoscope.core.FlowConf
+import com.didichuxing.horoscope.core.{Compositor, ExperimentController, Flow, FlowConf}
 import com.didichuxing.horoscope.core.FlowDslMessage.CompositorDef
 import com.didichuxing.horoscope.core.FlowRuntimeMessage._
-import com.didichuxing.horoscope.core.{Compositor, Flow}
 import com.didichuxing.horoscope.dsl.FlowCompiler
 import com.didichuxing.horoscope.runtime.Implicits.builtin
-import com.didichuxing.horoscope.runtime.experiment.{ABTestController, ExperimentController}
+import com.didichuxing.horoscope.runtime.experiment.ABTestController
 import com.didichuxing.horoscope.runtime.expression.{BuiltIn, DefaultBuiltIn, Expression}
 import com.didichuxing.horoscope.util.{FileUtils, FlowGraph, Utils}
 import com.google.common.io.Resources

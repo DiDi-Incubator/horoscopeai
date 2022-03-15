@@ -18,7 +18,7 @@ import com.didichuxing.horoscope.dsl.{SemanticException, SyntaxException}
 import com.didichuxing.horoscope.runtime.FlowExecutorImpl.CommitEvent
 import com.didichuxing.horoscope.runtime.convert.FlowValueConverter.FlowValueHelper
 import com.didichuxing.horoscope.runtime.{Value, _}
-import com.didichuxing.horoscope.runtime.experiment.ExperimentController.{ExperimentPlan, FlowOption}
+import com.didichuxing.horoscope.core.ExperimentController.{ExperimentPlan, FlowOption}
 import com.didichuxing.horoscope.runtime.expression.Expression
 import com.didichuxing.horoscope.runtime.interpreter.TopicLogCollector._
 import com.didichuxing.horoscope.util.Logging

@@ -6,9 +6,8 @@
 
 package com.didichuxing.horoscope.runtime
 
-import com.didichuxing.horoscope.core.Flow
+import com.didichuxing.horoscope.core.{ExperimentController, Flow}
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.TraceVariableOrBuilder
-import com.didichuxing.horoscope.runtime.experiment.ExperimentController
 import com.didichuxing.horoscope.runtime.expression.BuiltIn
 import com.didichuxing.horoscope.util.FlowGraph
 

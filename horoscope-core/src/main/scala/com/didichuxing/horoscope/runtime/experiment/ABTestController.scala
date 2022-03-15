@@ -1,14 +1,15 @@
 package com.didichuxing.horoscope.runtime.experiment
 
+import com.didichuxing.horoscope.core.{ExperimentControllerFactory, ExperimentController}
 import com.didichuxing.horoscope.core.FlowConf.Bucket
-import com.didichuxing.horoscope.runtime.experiment.ExperimentController._
+import com.didichuxing.horoscope.core.ExperimentController._
 import com.didichuxing.horoscope.runtime.expression.{BuiltIn, Expression}
 import com.didichuxing.horoscope.runtime.{Value, ValueDict}
 import com.didichuxing.horoscope.util.FlowConfParser._
 import com.didichuxing.horoscope.util.{Logging, Utils}
 import com.typesafe.config.Config
 
-class ABTestControllerFactory() extends ControllerFactory {
+class ABTestControllerFactory() extends ExperimentControllerFactory {
   override def name: String = "ab_test"
 
   override def create(config: Config)(builtIn: BuiltIn): ExperimentController = {

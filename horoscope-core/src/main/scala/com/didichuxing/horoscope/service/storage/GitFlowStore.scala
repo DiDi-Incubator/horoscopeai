@@ -8,7 +8,6 @@ import com.didichuxing.horoscope.core.FlowConf
 import com.didichuxing.horoscope.core.FlowDslMessage.{CompositorDef, FlowDef}
 import com.didichuxing.horoscope.core._
 import com.didichuxing.horoscope.dsl.FlowCompiler
-import com.didichuxing.horoscope.runtime.experiment.{ControllerFactory, ExperimentController}
 import com.didichuxing.horoscope.runtime.expression.{BuiltIn, DefaultBuiltIn, Expression, LocalJythonBuiltIn}
 import com.didichuxing.horoscope.util.FlowConfParser._
 import com.didichuxing.horoscope.util.{FlowGraph, Logging, Utils}
@@ -25,7 +24,7 @@ class GitFlowStore(
   configStore: ConfigStore,
   fileStore: FileStore,
   compositorFactories: Map[String, CompositorFactory],
-  controllerFactories: Map[String, ControllerFactory],
+  controllerFactories: Map[String, ExperimentControllerFactory],
   extBuiltIn: Option[BuiltIn] = None
 ) extends FlowStore with ConfigChangeListener with ConfigChecker with Logging {
   import GitFlowStore._
@@ -258,7 +257,7 @@ object GitFlowStore {
     private val cf: mutable.Map[String, CompositorFactory] = mutable.Map[String, CompositorFactory]()
     private var bi: Option[BuiltIn] = None
     private var cs: ConfigStore = _
-    private var ecf: mutable.Map[String, ControllerFactory] = mutable.Map[String, ControllerFactory]()
+    private var ecf: mutable.Map[String, ExperimentControllerFactory] = mutable.Map[String, ExperimentControllerFactory]()
     private var fs: FileStore = _
 
     def build(): FlowStore = {
@@ -270,7 +269,7 @@ object GitFlowStore {
       this
     }
 
-    def withExperimentControllerFactory(factory: ControllerFactory): this.type = {
+    def withExperimentControllerFactory(factory: ExperimentControllerFactory): this.type = {
       ecf += (factory.name -> factory)
       this
     }
