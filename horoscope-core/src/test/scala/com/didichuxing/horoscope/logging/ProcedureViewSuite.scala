@@ -1,12 +1,4 @@
-/*
- * Copyright (C) 2020 DiDi Inc. All Rights Reserved.
- * Authors: liangguorong@didiglobal.com
- */
-
-package com.didichuxing.horoscope.ods
-
-import java.io.File
-import java.util.Base64
+package com.didichuxing.horoscope.logging
 
 import com.didichuxing.horoscope.core.FlowRuntimeMessage.FlowInstance
 import com.didichuxing.horoscope.runtime.Value
@@ -17,6 +9,8 @@ import com.google.gson.{Gson, GsonBuilder, JsonParser}
 import com.google.protobuf.util.JsonFormat
 import org.scalatest.{FunSuite, Matchers}
 
+import java.io.File
+import java.util.Base64
 import scala.io.Source
 
 class ProcedureViewSuite extends FunSuite with Matchers with Logging {
@@ -68,7 +62,7 @@ class ProcedureViewSuite extends FunSuite with Matchers with Logging {
   }
 
   test("extract procedure view from json") {
-    import Implicits._
+    import com.didichuxing.horoscope.logging.Implicits._
     val json = loadData("procedure_view_json.txt")
     val procedureView = Value(new JsonParser().parse(json)).as[ProcedureView]
     info(procedureView.toJson().size.toString)

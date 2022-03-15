@@ -39,7 +39,7 @@ object PublicLog {
     val key = if (config.hasPath("horoscope.public-log-key")) {
       config.getString("horoscope.public-log-key")
     } else {
-      "map_traffic_horoscope"
+      "horoscope"
     }
     new PublicLog(key)
   }
