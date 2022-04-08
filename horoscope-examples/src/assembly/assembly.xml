@@ -27,6 +27,13 @@
             </includes>
             <outputDirectory>/flow</outputDirectory>
         </fileSet>
+        <fileSet>
+            <directory>demo</directory>
+            <includes>
+                <include>**/*</include>
+            </includes>
+            <outputDirectory>/demo</outputDirectory>
+        </fileSet>
     </fileSets>
     <dependencySets>
         <dependencySet>

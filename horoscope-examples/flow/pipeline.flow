@@ -1,0 +1,19 @@
+# /demo/pipeline
+
+***
+  is_comments <- @.is_comments
+  stock_data <- {
+    "stock_id" : @.stock_id,
+    "scale" : @.scale,
+    "count" : @.count,
+    "key" : @.key,
+    "secret" : @.secret
+  }
+  <> {
+    ? is_valid = is_comments == true
+    =>{
+        <analysis> => /demo/analysis?stock_data=stock_data
+    }
+  }
+
+***

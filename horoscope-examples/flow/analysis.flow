@@ -1,0 +1,24 @@
+# /demo/analysis
+
+***
+  // 获取股票参数
+  stock_data <- @stock_data
+
+  // 先获取文件路径->依次获取文件内容->调用aliyun情感分析接口->再对结果进行分析获取分析结果
+  root <- get_current_path() + "/demo/comments"
+  files <- get_files_from_path(root)
+  sort_files <- sort_by_key(files)
+
+  // 情感分析
+  key <- stock_data["key"]
+  secret <- stock_data["secret"]
+  senti_data <- get_sentiment(key, secret, sort_files, root)
+  senti_result <- analysis(senti_data)
+
+  <> {
+      ? is_data = senti_result.length() > 0
+      =>{
+          <stock> => /demo/stock?stock_data=stock_data
+      }
+  }
+***

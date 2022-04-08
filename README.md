@@ -15,6 +15,8 @@
 # 快速开始
 [5分钟快速搭建服务](./docs/programming-guides/quick-start.md)
 
+[股票舆情分析](./docs/examples/demo.md)
+
 # 系统架构
 ![architecture](./docs/assets/images/architecture.jpg)
 
