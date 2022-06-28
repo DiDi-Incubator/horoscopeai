@@ -11,4 +11,9 @@ get https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketDa
   scale <- stock_data["scale"]
   count <- stock_data["count"]
   stock_result <- GetStock(stock=stock_id, scale=scale, count=count)
+  <> {
+    ? got_result = stock_result.length() > 0
+    => {
+    }
+  }
 ***

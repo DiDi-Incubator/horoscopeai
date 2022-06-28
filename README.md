@@ -8,7 +8,7 @@
 
 # 核心功能
 + **流程编排**: 星盘设计了一种流程图语言FlowDSL, 用于编排策略流程, 管理和不同微服务的交互过程. FlowDSL的设计思想借鉴了金融和OA领域常见的商业过程管理模型(Business process management，BPM), BPM很适合用来管理多角色参与的复杂流程. FlowDSL具有图灵完全的表达能力, 同时有良好的可扩展性, 支持用户自定义算子
-+ **流程埋点**: 框架提供自动埋点, 异步流程关联和自定义埋点功能. 用户只需要在FlowDSL中描述埋点逻辑, 框架会处理日志格式转化, 关联和输入输出等底层细节, 提升埋点开发效率
++ **流程埋点**: 框架提供自动埋点, 异步流程关联和自定义埋点功能. 用户只需要在埋点配置中描述埋点逻辑, 框架会处理日志格式转化, 关联和输入输出等底层细节, 提升埋点开发效率
 + **模型实验**: 支持A/B小流量实验, 可用于模型替换. 同时, 基于FlowDSL可以方便扩展一些高级的实验功能, 例如超参调优, 主动学习采样
 + **实时分布式**: Flow的执行层是高并发, 高可用的实时流架构, 集群可动态伸缩, 同时支持状态缓存
 
@@ -33,16 +33,72 @@
 
 
 # 用户文档
-+ 开发指南
-    + flow dsl.md
-    + flow expression.md
-    + flow builtin udf.md
-    + compositor.md
-+ 案例
-    + 与机器学习场景相关的demo1
-+ 详细设计
-    + flow编译执行的原理
-+ Release Notes
+## 开发指南
+### FlowDSL
+星盘设计了一种叫做FlowDSL的配置文件来描述模型(或服务)之间的编制和编排关系。"编制"面向可执行的单个流程，而"编排"则强调多个流程之间的合作。
++ FlowDSL示例
+    ```
+    1  # /demo/stock
+    2  
+    3  * GetStock
+    4  ``` restful
+    5  get https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol=${stock}&scale=${scale}&ma=no&datalen=${count}
+    6  ```
+    7  ***
+    8    stock_data <- @stock_data
+    9    stock_id <- stock_data["stock_id"]
+    10   scale <- stock_data["scale"]
+    11   count <- stock_data["count"]
+    12   stock_result <- GetStock(stock=stock_id, scale=scale, count=count)
+    13   <> {
+    14     ? got_response = stock_result.length() > 0
+    15     => {
+    16     }
+    17   }
+    18  ***
+    ```
+  该示例片段摘自[股票舆情分析](./docs/examples/demo.md)，完整的Flow代码可参见horoscope-examples/flow。
++ 概念解释
+    + Flow名称: 使用URL表示，鼓励将项目中的Flow组织成层级结构。
+    + 模型或服务声明: 3-6行是模型或服务声明，无论模型还是服务调用，都可以视为对数据进行加工组装（Composite）的过程，所以这里将其称为Compositor。声明语法类似markdown的code引用，第一行是名称声明，风格必须是大写驼峰，下面是服务的类型和code。
+    + 编制过程描述: 8-17行是编制过程描述，其中8-11行是ETL过程(Assign)，12行是服务调用过程(Composite)，13-17行表示分支。编制过程的每个步骤都需要有一个名称(Symbol)，命名风格采用C/Unix的格式(小写字母+下划线)。
+
++ 数据处理  
+Flow流转中的数据结构与JSON类似，可以是整数、浮点数、字符串、布尔等基本类型，可以是词典、列表等文档类型，也可以是前述类型的任意组合。关于数据结构的详细文档参见[星盘数据结构](./docs/programming-guides/data-structure.md)。   
+Flow的核心逻辑是对来自数据源的数据进行加工处理，处理过程包含外部服务调用(Composite)、简单ETL(Expression)和用户自定义函数(Builtin)三类。
+    + 服务调用 / Composite  
+    作为流程编排框架，星盘首要的职责就是串联特征服务、模型服务和外部系统。我们将所有的外部调用看成是对数据做加工和组织的过程，所以在星盘中称之为compositor，认为其职责是对数据做composite。  
+    星盘默认提供了RestfulCompositor和KafkaProducerCompositor两个工厂类，用户也可以按需自行扩展，具体的扩展方法参见[详细开发文档](./docs/programming-guides/developer-guide.md)。 
+    
+    + ETL过程/表达式  
+    在进行复杂编制时为了串联各种compositor，需要引入大量的ETL逻辑。为了方便支持ETL，星盘在JSONPath基础上扩展了表达式的语法，提供的表达式种类有：  
+        + 特殊标识符： 使用"$"和"@"两个特殊标识符，$前缀用来引用用全局变量， @前缀用来引用Flow的入参 
+        + 常量：符合JSON语法的数据均可用来当做常量
+        + 基本运算：支持+-*/%等五种数值运算，not、and、or等逻辑运算，和字符串拼接等文本运算
+    
+    + 用户自定义函数 / Builtin  
+    当业务逻辑较复杂时，表达式不能满足所有需求时，可以用户编写UDF来实现。星盘的UDF扩展支持Scala或者Python语言。  
+    星盘默认提供了数值运算、字符串处理、集合/列表/字典操作等UDF，具体见[星盘默认提供的Builtin](./docs/programming-guides/builtin.md)。  
+    如果提供的Builtin不满足需求，也可以自行扩展，具体的扩展方式参见[详细开发文档](./docs/programming-guides/developer-guide.md)。
+   
+### 流程编制
+星盘编制的主要设计思路是"代码化的流程图"。整个编制文件看起来像是程序代码，但仍要当成流程图来理解。流程中各个节点的执行顺序可以是串行、并行或者乱序，编制时不应做任何假设。整个执行过程从结果倒推，下游节点在需要时触发上游节点执行。  
+具体支持的编制语句有Assign、Composite、Branch三大类，下面简要说明，具体参见[详细开发文档](./docs/programming-guides/developer-guide.md)。
++ Assign: 用于保存中间执行结果的节点， 也可以类比一般编程语言的赋值语句
++ Composite: 用于生成服务调用的节点，支持批式调用形式
++ Branch: 条件-分支语句，类似C/Java里的Switch-case语句
+### 流程编排
+### 流程埋点
+基于星盘提供的灵活的编排能力，复杂业务流程的串联会变得非常方便。但相对地，跨多业务流程的日志分析就会变得困难。针对这个问题，框架特地设计了主题埋点方案，提供给用户面向业务分析主题、跨异步流程、配置化方式进行埋点的能力。
++ 面向业务主题：每个业务分析需求就是一个埋点主题(topic)，一个埋点topic会生成一份数据，包含分析依赖的所有字段
++ 跨多流程：框架允许用户直接对多个流程的日志字段进行收集，节省多次离线关联操作
++ 配置化：用户可以通过配置化方式来指定埋点字段，当前版本仅支持在本地配置，更新配置后需要重启服务  
+具体使用方式参见[详细开发文档](./docs/programming-guides/developer-guide.md)。
+### 实验分析
+## 详细设计
++ [Flow编译执行原理](./docs/detail-design/flow-compiler.md)
++ [Flow运行时原理](./docs/detail-design/flow-runtime.md)
+## Release Notes
 
 
 # 社区活动

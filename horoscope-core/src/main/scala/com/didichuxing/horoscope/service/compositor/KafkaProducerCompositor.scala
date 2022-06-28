@@ -10,8 +10,8 @@ import org.apache.kafka.clients.producer.{KafkaProducer, ProducerRecord}
 import java.util.Properties
 import scala.concurrent.{ExecutionContext, Future, Promise}
 
-class KafkaCompositor(producer: KafkaProducer[Array[Byte], Array[Byte]], topic: String) (implicit ec: ExecutionContext)
-  extends Compositor with Logging {
+class KafkaProducerCompositor(producer: KafkaProducer[Array[Byte], Array[Byte]], topic: String
+) (implicit ec: ExecutionContext) extends Compositor with Logging {
 
   override def composite(args: ValueDict): Future[Value] = {
     val p = Promise[Value]()
@@ -35,7 +35,7 @@ class KafkaCompositor(producer: KafkaProducer[Array[Byte], Array[Byte]], topic: 
 case class KafkaException(message: String, cause: Option[Throwable] = None)
   extends Exception(message, cause.orNull)
 
-class KafkaCompositorFactory(implicit ec: ExecutionContext) extends CompositorFactory with Logging {
+class KafkaProducerCompositorFactory(implicit ec: ExecutionContext) extends CompositorFactory with Logging {
 
   val format = "org.apache.kafka.common.security.plain.PlainLoginModule required username=\"%s.%s\" password=\"%s\";"
 
@@ -59,7 +59,7 @@ class KafkaCompositorFactory(implicit ec: ExecutionContext) extends CompositorFa
           info(("msg", "close kafka producer"), ("topic", topic))
         }
       })
-      new KafkaCompositor(producer, topic)
+      new KafkaProducerCompositor(producer, topic)
     } catch {
       case e: Exception =>
         throw KafkaException(s"Invalid kafka config $code", Some(e.getCause))

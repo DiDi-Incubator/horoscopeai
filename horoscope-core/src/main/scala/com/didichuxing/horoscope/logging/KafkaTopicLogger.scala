@@ -16,7 +16,7 @@ class KafkaTopicLogger(config: Config) extends Logging with LogHelper {
   private val topic: String = kafkaConfig.getString("topic")
   private val producerConfig = getProducerConfig(kafkaConfig)
   private val producer = new KafkaProducer[String, String](producerConfig)
-
+  assert(topic.length > 0, "kafka topic of topic log is not set")
   info(("msg", "TopicLogger started"))
 
   def log(flowInstance: FlowInstance): Unit = {

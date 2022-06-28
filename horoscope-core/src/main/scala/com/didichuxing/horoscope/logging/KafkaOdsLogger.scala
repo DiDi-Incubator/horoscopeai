@@ -22,7 +22,7 @@ class KafkaOdsLogger(config: Config) extends OdsLogger with LogHelper with Loggi
   private val producerConfig = getProducerConfig(config.getConfig("horoscope.ods-logger.kafka"))
   private val producer = new KafkaProducer[String, Bytes](producerConfig)
   private val topic = Try(config.getString("horoscope.ods-logger.kafka.topic")).getOrElse("")
-  assert(topic.size > 0, "topic is null")
+  assert(topic.size > 0, "kafka topic of ods log is not set")
   info(("msg", "KafkaOdsLogger started"))
 
   private val topicLogger = new KafkaTopicLogger(config)
