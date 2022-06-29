@@ -143,11 +143,67 @@
     ```
     
 ## 流程编排
-总的来说， 星盘流程编排有Include、Schedule、Subscribe、Callback四种形式， 其中Include和Schedule是FlowDSl Native实现的， Subscribe、Callback是通过配置文件实现的. 
+总的来说， 星盘流程编排有Include、Subscribe、Schedule、Callback四种形式， 其中Include和Schedule是FlowDSl Native实现的， Subscribe、Callback是通过配置文件实现的. 
 + Include
-+ Schedule
+include是将其他flow引入到当前flow中，也可以理解为当前flow触发另一个flow的执行。其语法需要指定作用域(scope)，被调用flow名和调用参数。include可以获得调用返回结果，通过stock->stock_result这样的语法，我们可以在后续的编制过程中访问这个include返回结果，注意scope名不能和变量名重复。
+```
+  <stock> => /demo/stock?stock_data=stock_data  // 指定scope，被调用flow和调用参数
+  result <- stock->stock_result  //通过scope获取被调用flow中返回的结果
+  ```
 + Subscribe
+subscribe是从一个flow中订阅流量，被订阅的flow不感知被订阅，不支持返回值。通过订阅配置来实现订阅，配置中可以配置流量比例，准入流量条件等。
+```
+  {
+  	"name": "stock-subscribe-test",  //订阅配置名称
+  	"publisher": "/demo/main",  //发布者flow名
+  	"subscriber": "/demo/stock",  //订阅者flow名
+  	"args": [{
+  		"name": "stock_data",  //变量名
+  		"expression": "stock_data"  //变量表达式
+  	}],
+  	"bucket": [0, 100],  //流量配置
+  	"condition": "true",  //流量准入条件
+  	"enabled": true  //配置开关
+  }
+  ```
++ Schedule
+schedule是延时调度其他flow，语法和include相似，主要区别是要在scope后面带上+号来代表创建新事件，并且不能用scope -> name来访问结果
+
+```
+<schedule> + "10 minutes" => /v2/schedule?x=1&y=2  //延迟执行
+```
+
 + Callback
+callback指调用外部服务并接收反馈的机制。调用外部服务后，等待外部服务的反馈来继续接下来的流程运行。可以理解为受外部服务控制的延时调度方式。
+星盘中的callback与JavaScript中callback的概念略有不同，JS中的回调函数主要用于异步编程提高性能，而星盘中的回调是为了将流程关联，靠外部反馈信号来触发流程的运算。
+例如，流程A中触发图像采集过程等待图像回收，图像收回时，使用callback机制将流程A和回收流程(流程B)关联起来，使得流程B的被触发。
+通过回调配置来实现回调机制，回调配置中需要主要指定以下关键信息：
+    + 回调token
+        回调机制的唯一标识，用于关联回调过程返回结果
+    + 回调注册flow、回调flow和超时flow
+        用户在回调注册flow处生成token，传入变量中；在回调flow中回收反馈结果，解析token，关联回调前的流程；如果回调超时无反馈，则会触发超时flow执行
+    + 超时时间
+        当回调超过该时间，触发超时flow执行
+    + 上下文中的参数
+        即回调时传出的变量
+
+```
+{
+"name": "info_feedback",  //回调配置名
+"timeout": "10 minute",  //回调超时时间
+"token": "token_id",  //token变量名
+"flow": {
+	"callback": "/demo/info-feedback",  //回调返回触发的flow
+	"register": "/demo/register-info-callback",  //注册回调的flow
+	"timeout": "/demo/info-feedback-timeout"  //超时会触发的flow
+	},
+"args": [{
+	"expression": "input",  //参数表达式
+	"name": "callback_info"  //参数名称
+	}],
+}
+```
+
 ## 流程埋点
 + 设计初衷  
 基于星盘提供的编排能力，复杂业务流程的串联会变得非常方便。但相对地，要想对业务流程进行分析就没有那么容易，尤其是多流程的关联分析。一个常规的方法是，将每个流程的日志分别收集、存储、挂载到表上，在使用时再按照分析需求进行多表的关联。这样的方式虽然可以满足需求，但是离线多表关联效率十分低下。针对这种困境，星盘特地设计了配置化的、跨多流程的主题化埋点方案。
@@ -274,3 +330,20 @@
    ``` 
      
 ## 实验分析
+星盘提供一系列实验分析工具，主要用于模型/策略对比
++ **A/B实验**
+星盘流程中的策略或算法(例如demo中的NLP模型)，在生产过程中经常会有策略迭代、模型升级等场景需要进行A/B实验。用户可以创建2组或多组，配置流量，并收集实验数据并对比试验效果。
+星盘实验分析模块具有以下功能
+    + 自定义灵活多层分流，确保实验数据的有效性
+    + 记录实验数据，实时展示实验报告
+    + 自动生成包含转化率、等特定指标的实验报告
++ **其他实验探索**
+星盘在模型/策略自动优化做了一定探索，例如模型超参数调优（Hyper Parameter Optimization），主动学习（Active Learning）等，将在后续呈现
+    + Hyper Parameter Optimization
+    星盘可扩展外部超参数调优服务，对策略/模型进行自动化调优，以获得更好的模型表现
+    + Active Learning
+    同样，星盘可扩展主动学习服务，进行主动学习采样，使模型快速收敛
+    + 召回分析
+    新旧模型对比时，可使用同一组数据比较两策略的召回差异，可以得出两模型召回差异，分析其特性，有助于模型迭代优化
+    + 模型可解释性
+    对于漏招样本，星盘提供了模型可解释性工具，例如LIME

@@ -88,6 +88,17 @@ Flow的核心逻辑是对来自数据源的数据进行加工处理，处理过�
 + Composite: 用于生成服务调用的节点，支持批式调用形式
 + Branch: 条件-分支语句，类似C/Java里的Switch-case语句
 ### 流程编排
+星盘流程编排有Include、Subscribe、Schedule、Callback四种形式。
++ Include
+include是将其他flow引入到当前flow中，也可以理解为当前flow触发另一个flow的执行。
++ Subscribe
+subscribe是从一个flow中订阅流量，被订阅的flow不感知被订阅，不支持返回值。
++ Schedule
+schedule是延时调度其他flow。
++ Callback
+callback指调用外部服务并接收反馈的机制。调用外部服务后，等待外部服务的反馈来继续接下来的流程运行。可以理解为受外部服务控制的延时调度方式。
+
+具体使用方式参见[详细开发文档](./docs/programming-guides/developer-guide.md)
 ### 流程埋点
 基于星盘提供的灵活的编排能力，复杂业务流程的串联会变得非常方便。但相对地，跨多业务流程的日志分析就会变得困难。针对这个问题，框架特地设计了主题埋点方案，提供给用户面向业务分析主题、跨异步流程、配置化方式进行埋点的能力。
 + 面向业务主题：每个业务分析需求就是一个埋点主题(topic)，一个埋点topic会生成一份数据，包含分析依赖的所有字段
@@ -95,6 +106,11 @@ Flow的核心逻辑是对来自数据源的数据进行加工处理，处理过�
 + 配置化：用户可以通过配置化方式来指定埋点字段，当前版本仅支持在本地配置，更新配置后需要重启服务  
 具体使用方式参见[详细开发文档](./docs/programming-guides/developer-guide.md)。
 ### 实验分析
+星盘提供A/B实验、实验报告等功能
++ **A/B实验**
+  A/B实验支持灵活多层分流，实验数据记录和生成实验报告
++ **其他实验探索**
+星盘在模型/策略自动优化做了一定探索，例如模型超参数调优（Hyper Parameter Optimization），主动学习（Active Learning）等，将在后续呈现
 ## 详细设计
 + [Flow编译执行原理](./docs/detail-design/flow-compiler.md)
 + [Flow运行时原理](./docs/detail-design/flow-runtime.md)
