@@ -1,0 +1,249 @@
+/*
+ * Copyright (C) 2019 DiDi Inc. All Rights Reserved.
+ * Authors: wenxiang@didiglobal.com
+ * Description: intermediate representation (IR) of Flow
+ */
+syntax = "proto2";
+
+package com.didichuxing.horoscope.core;
+option java_multiple_files = false;
+option java_outer_classname = "FlowDslMessage";
+
+message FlowDef {
+    required string id = 1;
+    required string name = 2;
+    optional string comment = 3;
+    optional Declaration declaration = 4;
+    required Block body = 5;
+    map<string, string> config = 6;
+}
+
+message Declaration {
+    repeated CompositorDef compositor = 1;
+}
+
+message CompositorDef {
+    required string name = 1; // Camel-Case name initials in capitals
+    optional string comment = 2;
+    required string factory = 3; // class name
+    required string content = 4; // will be passed to factory class
+}
+
+message Block {
+    repeated Statement statement = 1;  // in static single assignment form
+}
+
+message Statement {
+    required string id = 1; // uuid
+    optional string comment = 2;
+
+    oneof body {
+        AssignStatement assign_statement = 101;
+        CompositeStatement composite_statement = 102;
+        BranchStatement branch_statement = 103;
+        ScheduleStatement schedule_statement = 104;
+        IncludeStatement include_statement = 105;
+    }
+}
+
+message AssignStatement {
+    required string reference = 1;
+    optional bool is_lazy = 2 [default = false];
+    required EvaluateDef evaluate = 3;
+    optional bool is_transient = 4 [default = false];
+}
+
+message CompositeStatement {
+    required string reference = 1;
+    optional bool is_lazy = 2 [default = false];
+    optional bool is_batch = 3 [default = false];
+    optional string compositor = 4;
+    required ExprDef argument = 5;
+    optional bool is_transient = 6 [default = false];
+}
+
+message ScheduleStatement {
+    required string scope = 1;
+    required string flow_name = 2;
+    repeated NamedExpression argument = 3;
+    optional string schedule_time = 4;
+    optional EvaluateDef trace = 5;
+    optional EvaluateDef token = 6;
+}
+
+message IncludeStatement {
+    required string scope = 1;
+    required string flow_name = 2;
+    repeated NamedExpression argument = 3;
+    optional EvaluateDef token = 4;
+}
+
+message BranchStatement {
+    message Choice {
+        repeated NamedExpression condition = 1;
+        required Block action = 2;
+    }
+
+    repeated Choice choice = 1;
+}
+
+message EvaluateDef {
+    required ExprDef expression = 1;
+    optional ExprDef failover = 2;
+}
+
+message NamedExpression {
+    required string name = 1;
+    optional EvaluateDef evaluate = 2;
+}
+
+message ExprDef {
+    oneof expression {
+        Reference reference = 1;
+        Literal literal = 2;
+        Call call = 3;
+        Apply apply = 4;
+        Unary unary = 5;
+        Binary binary = 6;
+        DictConstructor dict_constructor = 7;
+        ListConstructor list_constructor = 8;
+        At at = 9;
+        Visit visit = 10;
+        Search search = 11;
+        Select select = 12;
+        Slice slice = 13;
+        Query query = 14;
+        Project project = 15;
+        Expand expand = 16;
+        Fold fold = 17;
+        Transform transform = 18;
+        Transpose transpose = 19;
+
+        ExprDef expr = 102; // root element
+    }
+
+    optional string code = 101;
+}
+
+enum Operator {
+    OP_MINUS = 1;
+    OP_TO_BOOLEAN = 2;
+    OP_NOT = 3;
+    OP_AND = 4;
+    OP_OR = 5;
+    OP_EQ = 6;
+    OP_NE = 7;
+    OP_LT = 8;
+    OP_LE = 9;
+    OP_GT = 10;
+    OP_GE = 11;
+    OP_IN = 12;
+    OP_NOT_IN = 13;
+    OP_MULTIPLY = 14;
+    OP_DIVIDE = 15;
+    OP_MOD = 16;
+    OP_ADD = 17;
+    OP_SUBTRACT = 18;
+}
+
+message Reference {
+    required string name = 1;
+    optional string scope = 2;
+}
+
+message Literal {
+    oneof primitive {
+        string string_value = 1;
+        string number_value = 2;
+        bool boolean_value = 4;
+    }
+}
+
+message Call {
+    required string function = 1;
+    repeated ExprDef argument = 2;
+}
+
+message Apply {
+    required string method = 1;
+    required ExprDef from = 2;
+    repeated ExprDef argument = 3;
+}
+
+message Unary {
+    required Operator op = 1;
+    required ExprDef child = 2;
+}
+
+message Binary {
+    required Operator op = 1;
+    required ExprDef left = 2;
+    required ExprDef right = 3;
+}
+
+message DictElement {
+    required string name = 1;
+    required ExprDef child = 2;
+}
+
+message DictConstructor {
+    repeated DictElement element = 1;
+}
+
+message ListConstructor {
+    repeated ExprDef element = 1;
+}
+
+message Visit {
+    optional string name = 1; // null for *
+    required ExprDef from = 2;
+}
+
+message At {
+    required ExprDef index = 1;
+    required ExprDef from = 2;
+}
+
+message Search {
+    optional string name = 1; // null for *
+    required ExprDef from = 2;
+}
+
+message Select {
+    repeated ExprDef index = 1; // empty for *
+    required ExprDef from = 2;
+}
+
+message Slice {
+    required ExprDef begin = 1;  // could be null
+    required ExprDef end = 2; // could be null
+    required ExprDef from = 3;
+}
+
+message Project {
+    required ExprDef index = 1;
+    required ExprDef from = 2;
+}
+
+message Expand {
+    required ExprDef index = 1;
+    required ExprDef from = 2;
+}
+
+message Fold {
+    required ExprDef from = 2;
+}
+
+message Query {
+    required ExprDef predicate = 1;
+    required ExprDef from = 2;
+}
+
+message Transform {
+    required ExprDef expression = 1;
+    required ExprDef from = 2;
+}
+
+message Transpose {
+    required ExprDef from = 2;
+}

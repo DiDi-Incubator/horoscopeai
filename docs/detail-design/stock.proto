@@ -1,0 +1,176 @@
+id: "74aa2be61550070a96db33ecab5aedf5"
+name: "/demo/stock"
+declaration {
+  compositor {
+    name: "GetStock"
+    factory: "restful"
+    content: "get https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol=${stock}&scale=${scale}&ma=no&datalen=${count}"
+  }
+}
+body {
+  statement {
+    id: "/demo/stock:9:2"
+    assign_statement {
+      reference: "stock_data"
+      evaluate {
+        expression {
+          reference {
+            name: "@stock_data"
+          }
+          code: "@stock_data"
+        }
+      }
+    }
+  }
+  statement {
+    id: "/demo/stock:10:2"
+    assign_statement {
+      reference: "stock_id"
+      evaluate {
+        expression {
+          at {
+            index {
+              literal {
+                string_value: "stock_id"
+              }
+              code: "\"stock_id\""
+            }
+            from {
+              reference {
+                name: "stock_data"
+              }
+              code: "stock_data"
+            }
+          }
+          code: "stock_data[\"stock_id\"]"
+        }
+      }
+    }
+  }
+  statement {
+    id: "/demo/stock:11:2"
+    assign_statement {
+      reference: "scale"
+      evaluate {
+        expression {
+          at {
+            index {
+              literal {
+                string_value: "scale"
+              }
+              code: "\"scale\""
+            }
+            from {
+              reference {
+                name: "stock_data"
+              }
+              code: "stock_data"
+            }
+          }
+          code: "stock_data[\"scale\"]"
+        }
+      }
+    }
+  }
+  statement {
+    id: "/demo/stock:12:2"
+    assign_statement {
+      reference: "count"
+      evaluate {
+        expression {
+          at {
+            index {
+              literal {
+                string_value: "count"
+              }
+              code: "\"count\""
+            }
+            from {
+              reference {
+                name: "stock_data"
+              }
+              code: "stock_data"
+            }
+          }
+          code: "stock_data[\"count\"]"
+        }
+      }
+    }
+  }
+  statement {
+    id: "/demo/stock:13:2"
+    composite_statement {
+      reference: "stock_result"
+      compositor: "GetStock"
+      argument {
+        dict_constructor {
+          element {
+            name: "stock"
+            child {
+              reference {
+                name: "stock_id"
+              }
+              code: "stock_id"
+            }
+          }
+          element {
+            name: "scale"
+            child {
+              reference {
+                name: "scale"
+              }
+              code: "scale"
+            }
+          }
+          element {
+            name: "count"
+            child {
+              reference {
+                name: "count"
+              }
+              code: "count"
+            }
+          }
+        }
+      }
+    }
+  }
+  statement {
+    id: "/demo/stock:14:2"
+    branch_statement {
+      choice {
+        condition {
+          name: "got_result"
+          evaluate {
+            expression {
+              binary {
+                op: OP_GT
+                left {
+                  apply {
+                    method: "length"
+                    from {
+                      reference {
+                        name: "stock_result"
+                      }
+                      code: "stock_result"
+                    }
+                  }
+                  code: "stock_result.length()"
+                }
+                right {
+                  literal {
+                    number_value: "0"
+                  }
+                  code: "0"
+                }
+              }
+              code: "stock_result.length() > 0"
+            }
+          }
+        }
+        action {
+        }
+      }
+    }
+  }
+}
