@@ -203,7 +203,7 @@ trait SourceFactory extends Serializable {
 具体实现可以借鉴项目中com.didichuxing.horoscope.service.source.KafkaSource。
 想要使用拓展的数据源，是通过FlowManager的startSource()方法进行注册的。
 对于开发者来说，需要将factory名和source名加入配置文件(horoscope.sources[]目录下)，星盘启动的时候会自动扫描并注册数据源，目前开源版本中关于数据源的配置详情如下：
-```
+```properties
 horoscope {
   sources = [
     {
@@ -216,19 +216,20 @@ horoscope {
       #消息源接入参数，这里是采用的kafka接入
       parameter {
         kafka = {
+          #kafka服务配置，因为涉及ip等敏感信息，这里做了隐藏处理
           #服务地址
-          servers = "10.179.24.223:9093"
-          cluster-id = 95
-          app-id = "appId_001485"
-          password = "_twYiKJNrBCX"
+          servers = ?
+          cluster-id = ?
+          app-id = ?
+          password = ?
           #topic名，多个用,隔开
-          topic = "event_source"
+          topic = ?
           #group名
-          group = "test"
+          group = ?
           #每次最多拉取消息条数
-          max = 10
+          max = ?
           #同时拉取的并发线程数
-          concurrency = 2
+          concurrency = ?
         }
         backpress {
           #该消息源的反压配置100表示，每台机器最多同时有100个消息正在运行
@@ -253,8 +254,131 @@ horoscope {
 ```
 
 ## I/O交互拓展/Store
-+ ###store简述
-store在星盘中主要用于I/O交互，如FlowStore、FileStore、configStore等
+### 各类Store简介及接口
++ ### FileStore:用于读写FlowDsl文件
+拓展需要实现FileStore接口，可以参考开源版本中的默认实现com.didichuxing.horoscope.service.storage.LocalFileStore
+```scala
+trait FileStore {
+
+  def getFile(path: String): File
+
+  def listFiles(url: String): (String, Seq[File])
+
+  def updateFile(path: String, content: String): Boolean
+
+  def deleteFile(path: String): Boolean
+
+  def createFile(path: String, isDirectory: Boolean): Boolean
+
+  def copyFile(path: String): Boolean
+
+  def renameFile(path: String, name: String): Boolean
+
+  def api: Route = _.reject()
+}
+```
+
++ ### ConfigStore:用于读取配置，并非项目配置文件，而是星盘高级功能的配置，埋点、订阅、实验、回调的相关配置
+拓展需要实现ConfigStore接口，可以参考开源版本中的默认实现com.didichuxing.horoscope.service.storage.LocalConfigStore
+```scala
+trait ConfigStore {
+
+  def getConf(name: String, confType: String): Config
+
+  def getConfList(confType: String): List[Config]
+
+  def registerListener(listener: ConfigChangeListener): Unit
+
+  def registerChecker(checker: ConfigChecker): Unit
+
+  def api: Route = _.reject()
+}
+```
+
++ ### FlowStore:星盘I/O交互的核心枢纽，上文中文提到的FileStore、ConfigStore都集成在FlowStore中，其他包括Experiment(实验相关)、BuiltIn(复杂逻辑拓展/UDF)也都集成在FlowStore中
+拓展需要实现FlowStore接口，可以参考开源版本中的默认实现com.didichuxing.horoscope.service.storage.GitFlowStore
+```scala
+trait FlowStore {
+  def getFlow(name: String): Flow = throw new NotImplementedError()
+
+  def getController(name: String): Seq[ExperimentController] = throw new NotImplementedError()
+
+  def getFlowGraph: FlowGraph = throw new NotImplementedError()
+
+  def getBuiltIn: BuiltIn
+
+  def api: Route = _.reject()
+}
+```
+
++ ### TraceStore:用于存储星盘中的"事件"
+将来在分布式版本中，可以基于traceStore实现"事件"的分发，有重要的意义。  
+拓展需要实现TraceStore接口，可以参考开源版本中的默认实现com.didichuxing.horoscope.service.storage.DefaultTraceStore
+```scala
+trait TraceStore {
+  /**
+    * Add a new event to store, try to acquire and return token when needed
+    */
+  def addEvent(source: String, event: FlowEvent.Builder): FlowEventOrBuilder
+
+  /**
+   * Batch add new events to store
+   */
+  def addEvents(source: String, events: List[FlowEvent.Builder]): List[FlowEventOrBuilder]
+
+  /**
+    * Extract information from instance, and must perform three steps in transaction:
+    * 1. save all $variable updates to context
+    * 2. if next event exists, put it to mailbox, with source set to null
+    * 3. remove event from mailbox
+    *
+    * Besides, store can save instance to history for analyzing purpose
+  */
+  def commitEvent(source: String, instance: FlowInstance.Builder): FlowInstanceOrBuilder
+
+  /**
+    * Get all pending events from source
+    */
+  def getEventsBySource(source: String, beginSlot: Int, endSlot: Int): Iterable[FlowEventOrBuilder]
+
+  /**
+    * Get most recent snapshot of trace context
+    */
+  def getContext(trace: String, keys: Array[String]): Future[Map[String, TraceVariableOrBuilder]]
+
+  /**
+   * Poll scheduler event
+   */
+  def pollSchedulerEvents(source: String, slot: Int, timestamp: Long, limit: Int): Iterable[FlowEvent]
+
+  /**
+   * Commit success process scheduler event
+   */
+  def commitSchedulerEvents(source: String, slot: Int, events: List[FlowEvent]): Long
+
+  def api: Route = _.reject()
+}
+```
+
+用户对以上各类Store实现后， 注册到星盘的启动管理器FlowManager中即可生效。示例如下：
+```scala
+var flowManager = Horoscope.newLocalService()
+  .withFileStore(fileStore)
+  .withConfigStore(configStore)
+  .withFlowStore(flowStore)
+  .withTraceStore(traceStore)
+  ... //这里将其他配置的类省略
+  .build()
+
+//启动主服务
+info("horoscope begin start service")
+flowManager.startService()
+//启动外部source
+info("horoscope begin start sources")
+flowManager.startSources()
+info("horoscope init complete")
+```
+
 
 + ###拓展方法及示例
 以FileStore为例，当前开源版本的Demo使用的是LocalFileStore，是借助本地文件来实现flow文件的读写的。GitFIleStore是基于版本控制这个需求下产生的衍生类。用户可以借助一些分布式工具进行拓展比如ZookeeperFileStore，可以实现交互式开发和多人协作开发。
