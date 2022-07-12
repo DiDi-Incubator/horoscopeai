@@ -26,6 +26,7 @@
 
 
 # 2.典型执行流程
+![执行流程](.././assets/images/executor1.png)
 + kafkaSource负责消费kafka中数据，并维护kafka位点进行commit
 + EventBuilder负责事件的生成
 + EventRouter负责事件分发
@@ -33,5 +34,3 @@
 + 相同traceId必须串行执行
 + 一个trace上，后面的flow能看到前一个flow的修改
 + 使用actor模型，将事件放入mailbox中，后续由Akka异步执行
-
-![执行流程](.././assets/images/executor1.png)
