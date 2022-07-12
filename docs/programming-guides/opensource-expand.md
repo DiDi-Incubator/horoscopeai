@@ -37,9 +37,11 @@ stock_result <- GetStock(stock=stock_id, scale=scale, count=count)
 ```
 
 + ### Compositor的原理
-星盘拿到上述信息之后，会利用CompositorFactory接口生成Compositor。
-具体过程为用factoryName字段(demo中的"restful")来寻找CompositorFactory，然后将code文本(demo中的"get"以及"https...")传入factory来创建新的Compositor。
-随后在事件触发时执行该Compositor实例的composite方法。
+星盘拿到上述信息之后，会利用CompositorFactory接口生成Compositor  
+具体过程如下：  
+1、用factoryName字段(demo中的"restful")来寻找CompositorFactory  
+2、将code文本(demo中的"get"以及"https...")传入factory来创建新的Compositor  
+3、随后在事件触发时执行该Compositor实例的composite方法
 
 + ### 拓展方法及示例
 想要扩展星盘中支持的外部服务类型，用户只要实现Compositor及其相应的CompositorFactory就可以。
@@ -102,7 +104,7 @@ class RestfulCompositorFactory extends CompositorFactory {
   }
 }
 ```
-完成Compositor和CompositorFactory的开发后，需要将Factory注册代码如下：
+完成Compositor和CompositorFactory的开发后，需要将Factory注册，代码如下：
 ```scala
 GitFlowStore.newBuilder()
 .withCompositorFactory("restful", new RestfulCompositorFactory(config))
@@ -128,7 +130,7 @@ obj.method(arg1, arg2, ...)
 上述function和method为UDF的两种调用和使用形式，星盘中支持两种语言来编写UDF，分别是基于Scala和基于Python。
 
 + ### 基于Scala的UDF拓展方式
-基于Scala的拓展需要用户在星盘框架代码中编写一个方法，并注册到SimpleBuiltIn后，再启动星盘项目就完成注册并且可以使用了，示例如下：
+基于Scala的拓展需要用户在星盘框架代码中编写一个方法，并注册到DefaultBuiltIn后，再启动星盘项目就完成注册并且可以使用了，示例如下：
 ```scala
 //基于Scala的UDF拓展
 object DefaultBuiltIn {
@@ -360,7 +362,7 @@ trait TraceStore {
 }
 ```
 
-用户对以上各类Store实现后， 注册到星盘的启动管理器FlowManager中即可生效。示例如下：
+想要拓展的开发者实现以上各类Store后， 注册到星盘的启动管理器FlowManager中即可生效。示例如下：
 ```scala
 var flowManager = Horoscope.newLocalService()
   .withFileStore(fileStore)
@@ -380,10 +382,8 @@ info("horoscope init complete")
 ```
 
 
-+ ###拓展方法及示例
-以FileStore为例，当前开源版本的Demo使用的是LocalFileStore，是借助本地文件来实现flow文件的读写的。GitFIleStore是基于版本控制这个需求下产生的衍生类。用户可以借助一些分布式工具进行拓展比如ZookeeperFileStore，可以实现交互式开发和多人协作开发。
-星盘中的store均为接口形式，目前的实现仅为本地版本，后续会继续开源分布式版本。
-敬请期待...
+PS：以FileStore为例，当前开源版本的Demo使用的是LocalFileStore，是借助本地文件来实现flow文件的读写的。GitFIleStore是基于版本控制这个需求下产生的衍生类。用户可以借助一些分布式工具进行拓展比如ZookeeperFileStore，可以实现交互式开发和多人协作开发。
+星盘中的store均为接口形式，目前的实现仅为本地版本，后续会继续开源分布式版本。敬请期待...
 
 ## 实验拓展/Experiment
 星盘实验是期望能够对模型召回进行评估的设计，只需要实现ExperimentController和ExperimentControllerFactory即可。
@@ -409,6 +409,6 @@ trait ExperimentController {
 当前星盘开源版本提供了AB实验的代码实现，代码见com.didichuxing.horoscope.runtime.experiment.ABTestController
 
 ## 控制台拓展(前端)/Api
-当前星盘开源版本的Example仅支持本地编写FlowDSL(.flow)文件，后续会开源星盘控制台(可交互式页面)版本，用户可以直接在页面上查看和开发FlowDSL(.flow)文件、可以在页面上查看执行过的事件、可以用真实数据调试等等...
-当前版本上述功能的接口已经暴露(见GitFlowStore.api)，用户可根据自己的想法设计前端页面交互形式...
+当前星盘开源版本的Example仅支持本地编写FlowDSL(.flow)文件，后续会开源星盘控制台(可交互式页面)版本，用户可以直接在页面上查看和开发FlowDSL(.flow)文件、可以在页面上查看执行过的事件、可以用真实数据调试等等...  
+当前版本上述功能的接口已经暴露(见GitFlowStore.api)，用户可根据自己的想法设计前端页面交互形式，
 星盘后续会开源一个前端控制台，敬请期待......
