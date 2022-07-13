@@ -4,16 +4,14 @@
 
 ![编译原理](.././assets/images/compile-process1.png)
 
-+ 星盘使用[ANTLR4](https://github.com/antlr/antlr4)将flow文件编译成ProtoBuf中间文件存放在内存中。
++ 星盘使用[ANTLR4](https://github.com/antlr/antlr4)将flow文件编译成AST(抽象语法树), AST用Protobuf表示，[ProtoBuf定义](../../horoscope-core/src/main/proto/flow_dsl.proto)。
 
-+ ProtoBuf表示语法树信息，并进行扩展支持compositor、自定义算子builtin等；根据配置文件flowConf和ProtoBuf生成编排关系flowGraph。
-+ flowGraph的顶点是ProtoBuf，边支持include,subscribe,schedule,callback关系，include和schedule为flow语法支持 ,subscribe和callback为配置文件支持。
-+ 中间文件Protobuf交给FlowExecutor执行，后续支持分布式FlowExecutor
++ Protobuf扩展支持compositor、自定义算子builtin等，Protobuf和FlowConf配置一起生成单个的Flow对象。
++ 所有的Flow对象一起生成一个flowGraph，flowGraph的顶点是Flow对象，边为Flow对象之间的关系，现在支持include,subscribe,schedule,callback关系
++ flowGraph交给FlowExecutor执行，后续支持分布式FlowExecutor
 
 ## 星盘关键定义文件
-+ [星盘ANTLR4语法定义](../../horoscope-core/src/main/antlr4/com/didichuxing/horoscope/dsl/Flow.g4)
-
-+ [星盘中间文件ProtoBuf定义](../../horoscope-core/src/main/proto/flow_dsl.proto)
++ [星盘语法定义](../../horoscope-core/src/main/antlr4/com/didichuxing/horoscope/dsl/Flow.g4)
 
 ## 案例
 
