@@ -114,6 +114,17 @@ callback指调用外部服务并接收反馈的机制。调用外部服务后，
 ## 详细设计
 + [Flow编译执行原理](./docs/detail-design/flow-compiler.md)
 + [Flow运行时原理](./docs/detail-design/flow-runtime.md)
+
+## 星盘拓展
++ 服务调用拓展/Compositor
++ 复杂逻辑拓展/UDF&BuiltIn
++ 数据源拓展/Source
++ I/O交互拓展/Store
++ 实验拓展/Experiment
++ 控制台拓展(前端)/Api
+
+具体拓展方式参见[星盘拓展文档](./docs/programming-guides/opensource-expand.md)
+
 ## Release Notes
 
 
