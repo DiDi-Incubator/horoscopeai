@@ -6,7 +6,7 @@
 
 ## 本地环境
 + python 3.6版本以上
-+ bs4 4.9.3
++ bs4 4.9.3 (pip install lxml)
 + jdk 1.80
 
 ## 1. 星盘服务启动

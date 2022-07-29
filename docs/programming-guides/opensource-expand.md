@@ -5,7 +5,7 @@
 我们将这些外部调用都看成是对数据做加工和组织(composite)的过程，所以在星盘中称之为compositor。
 
 + ### Compositor的表述形式
-compositor在.flow编制文件中声明的语法如下：
+compositor在flow编制文件中声明的语法如下：
 
 ```
 * CompositorName
