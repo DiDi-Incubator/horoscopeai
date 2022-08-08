@@ -257,7 +257,7 @@ horoscope {
 
 ## I/O交互拓展/Store
 ### 各类Store简介及接口
-+ ### FileStore:用于读写FlowDsl文件。
++ ### FileStore:用于读写FlowDsl文件
 拓展需要实现FileStore接口，可以参考开源版本中的默认实现com.didichuxing.horoscope.service.storage.LocalFileStore。
 ```scala
 trait FileStore {
@@ -280,7 +280,7 @@ trait FileStore {
 }
 ```
 
-+ ### ConfigStore:用于读取配置，并非项目配置文件，而是星盘高级功能的配置，埋点、订阅、实验、回调的相关配置。
++ ### ConfigStore:用于读取配置，并非项目配置文件，而是星盘高级功能的配置，埋点、订阅、实验、回调的相关配置
 拓展需要实现ConfigStore接口，可以参考开源版本中的默认实现com.didichuxing.horoscope.service.storage.LocalConfigStore。
 ```scala
 trait ConfigStore {
@@ -297,7 +297,7 @@ trait ConfigStore {
 }
 ```
 
-+ ### FlowStore:星盘I/O交互的核心枢纽，上文中文提到的FileStore、ConfigStore都集成在FlowStore中，其他包括Experiment(实验相关)、BuiltIn(复杂逻辑拓展/UDF)也都集成在FlowStore中。
++ ### FlowStore:星盘I/O交互的核心枢纽，上文中文提到的FileStore、ConfigStore都集成在FlowStore中，其他包括Experiment(实验相关)、BuiltIn(复杂逻辑拓展/UDF)也都集成在FlowStore中
 拓展需要实现FlowStore接口，可以参考开源版本中的默认实现com.didichuxing.horoscope.service.storage.GitFlowStore。
 ```scala
 trait FlowStore {
@@ -313,7 +313,7 @@ trait FlowStore {
 }
 ```
 
-+ ### TraceStore:用于存储星盘中的"事件"。
++ ### TraceStore:用于存储星盘中的"事件"
 将来在分布式版本中，可以基于traceStore实现"事件"的分发，有重要的意义。  
 拓展需要实现TraceStore接口，可以参考开源版本中的默认实现com.didichuxing.horoscope.service.storage.DefaultTraceStore。
 ```scala
