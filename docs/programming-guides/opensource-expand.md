@@ -37,11 +37,11 @@ stock_result <- GetStock(stock=stock_id, scale=scale, count=count)
 ```
 
 + ### Compositor的原理
-星盘拿到上述信息之后，会利用CompositorFactory接口生成Compositor  
+星盘拿到上述信息之后，会利用CompositorFactory接口生成Compositor。  
 具体过程如下：  
-1、用factoryName字段(demo中的"restful")来寻找CompositorFactory  
-2、将code文本(demo中的"get"以及"https...")传入factory来创建新的Compositor  
-3、随后在事件触发时执行该Compositor实例的composite方法
+1、用factoryName字段(demo中的"restful")来寻找CompositorFactory。  
+2、将code文本(demo中的"get"以及"https...")传入factory来创建新的Compositor。  
+3、随后在事件触发时执行该Compositor实例的composite方法。
 
 + ### 拓展方法及示例
 想要扩展星盘中支持的外部服务类型，用户只要实现Compositor及其相应的CompositorFactory就可以。
@@ -117,7 +117,7 @@ PS:针对任何一个FlowDSL(.flow)配置文件，其中的一个Compositor声�
 + ### UDF注册
 通常业务逻辑复杂度很高，不能指望FlowDSL能够满足全部需求，因此星盘允许定义UDF，由用户自由编写一段逻辑或方法并注册后，就可以在FlowDSL中使用它。
 UDF和FlowDSL配置文件不同，添加和更新UDF不支持热更新，需要重新编译并发布服务。
-UDF有下述两种调用形式(function式、method式)。星盘UDF只支持位置参数
+UDF有下述两种调用形式(function式、method式)，而且星盘UDF只支持位置参数。
 ```
 // function语法如下：面向过程风格
 func(arg1, arg2, ...)
@@ -257,8 +257,8 @@ horoscope {
 
 ## I/O交互拓展/Store
 ### 各类Store简介及接口
-+ ### FileStore:用于读写FlowDsl文件
-拓展需要实现FileStore接口，可以参考开源版本中的默认实现com.didichuxing.horoscope.service.storage.LocalFileStore
++ ### FileStore:用于读写FlowDsl文件。
+拓展需要实现FileStore接口，可以参考开源版本中的默认实现com.didichuxing.horoscope.service.storage.LocalFileStore。
 ```scala
 trait FileStore {
 
@@ -280,8 +280,8 @@ trait FileStore {
 }
 ```
 
-+ ### ConfigStore:用于读取配置，并非项目配置文件，而是星盘高级功能的配置，埋点、订阅、实验、回调的相关配置
-拓展需要实现ConfigStore接口，可以参考开源版本中的默认实现com.didichuxing.horoscope.service.storage.LocalConfigStore
++ ### ConfigStore:用于读取配置，并非项目配置文件，而是星盘高级功能的配置，埋点、订阅、实验、回调的相关配置。
+拓展需要实现ConfigStore接口，可以参考开源版本中的默认实现com.didichuxing.horoscope.service.storage.LocalConfigStore。
 ```scala
 trait ConfigStore {
 
@@ -297,8 +297,8 @@ trait ConfigStore {
 }
 ```
 
-+ ### FlowStore:星盘I/O交互的核心枢纽，上文中文提到的FileStore、ConfigStore都集成在FlowStore中，其他包括Experiment(实验相关)、BuiltIn(复杂逻辑拓展/UDF)也都集成在FlowStore中
-拓展需要实现FlowStore接口，可以参考开源版本中的默认实现com.didichuxing.horoscope.service.storage.GitFlowStore
++ ### FlowStore:星盘I/O交互的核心枢纽，上文中文提到的FileStore、ConfigStore都集成在FlowStore中，其他包括Experiment(实验相关)、BuiltIn(复杂逻辑拓展/UDF)也都集成在FlowStore中。
+拓展需要实现FlowStore接口，可以参考开源版本中的默认实现com.didichuxing.horoscope.service.storage.GitFlowStore。
 ```scala
 trait FlowStore {
   def getFlow(name: String): Flow = throw new NotImplementedError()
@@ -313,9 +313,9 @@ trait FlowStore {
 }
 ```
 
-+ ### TraceStore:用于存储星盘中的"事件"
++ ### TraceStore:用于存储星盘中的"事件"。
 将来在分布式版本中，可以基于traceStore实现"事件"的分发，有重要的意义。  
-拓展需要实现TraceStore接口，可以参考开源版本中的默认实现com.didichuxing.horoscope.service.storage.DefaultTraceStore
+拓展需要实现TraceStore接口，可以参考开源版本中的默认实现com.didichuxing.horoscope.service.storage.DefaultTraceStore。
 ```scala
 trait TraceStore {
   /**
@@ -362,7 +362,7 @@ trait TraceStore {
 }
 ```
 
-想要拓展的开发者实现以上各类Store后， 注册到星盘的启动管理器FlowManager中即可生效。示例如下：
+想要拓展的开发者实现以上各类Store后，注册到星盘的启动管理器FlowManager中即可生效。示例如下：
 ```scala
 var flowManager = Horoscope.newLocalService()
   .withFileStore(fileStore)
@@ -383,7 +383,7 @@ info("horoscope init complete")
 
 
 PS：以FileStore为例，当前开源版本的Demo使用的是LocalFileStore，是借助本地文件来实现flow文件的读写的。GitFIleStore是基于版本控制这个需求下产生的衍生类。用户可以借助一些分布式工具进行拓展比如ZookeeperFileStore，可以实现交互式开发和多人协作开发。
-星盘中的store均为接口形式，目前的实现仅为本地版本，后续会继续开源分布式版本。敬请期待...
+星盘中的store均为接口形式，目前的实现仅为本地版本，后续会继续开源分布式版本。敬请期待......
 
 ## 实验拓展/Experiment
 星盘实验是期望能够对模型召回进行评估的设计，只需要实现ExperimentController和ExperimentControllerFactory即可。
@@ -406,7 +406,7 @@ trait ExperimentController {
   def priority: Int
 }
 ```
-当前星盘开源版本提供了AB实验的代码实现，代码见com.didichuxing.horoscope.runtime.experiment.ABTestController
+当前星盘开源版本提供了AB实验的代码实现，代码见com.didichuxing.horoscope.runtime.experiment.ABTestController。
 
 ## 控制台拓展(前端)/Api
 当前星盘开源版本的Example仅支持本地编写FlowDSL(.flow)文件，后续会开源星盘控制台(可交互式页面)版本，用户可以直接在页面上查看和开发FlowDSL(.flow)文件、可以在页面上查看执行过的事件、可以用真实数据调试等等...  
