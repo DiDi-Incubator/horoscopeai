@@ -140,7 +140,7 @@ callback指调用外部服务并接收异步反馈的机制。调用外部服务
 + [Flow运行时原理](./docs/detail-design/flow-runtime.md)
 
 ## 星盘拓展
-星盘框架具有良好的可扩展性, 开发者可以按自己的业务需求扩展, 我们欢迎社区成员一起共建星盘生态.
+星盘框架具有良好的可扩展性, 开发者可以按自己的业务需求扩展, 我们欢迎社区成员一起共建星盘生态。
 + 服务调用拓展/Compositor
 + 复杂逻辑拓展/UDF&BuiltIn
 + 数据源拓展/Source
@@ -148,7 +148,7 @@ callback指调用外部服务并接收异步反馈的机制。调用外部服务
 + 实验拓展/Experiment
 + 控制台拓展(前端)/Api
 
-具体拓展方式参见[星盘拓展文档](./docs/programming-guides/opensource-expand.md)
+具体拓展方式参见[星盘拓展文档]。(./docs/programming-guides/opensource-expand.md)
 
 
 # 团队简介
