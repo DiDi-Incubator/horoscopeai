@@ -143,7 +143,7 @@
     ```
     
 ## 流程编排
-总的来说， 星盘流程编排有Include、Subscribe、Schedule、Callback四种形式， 其中Include和Schedule是FlowDSl Native实现的， Subscribe、Callback是通过配置文件实现的. 
+总的来说，星盘流程编排有Include、Subscribe、Schedule、Callback四种形式，其中Include和Schedule是FlowDSl Native实现的，Subscribe、Callback是通过配置文件实现的。
 + Include
 include是将其他flow引入到当前flow中，也可以理解为当前flow触发另一个flow的执行。其语法需要指定作用域(scope)，被调用flow名和调用参数。include可以获得调用返回结果，通过stock->stock_result这样的语法，我们可以在后续的编制过程中访问这个include返回结果，注意scope名不能和变量名重复。
 ```
