@@ -1,6 +1,6 @@
-# 1.星盘系统整体架构
+# 1.运行时架构
 
-![整体架构](.././assets/images/arch1.png)
+![整体架构](../../docs/assets/images/arch1.png)
 
 ## 接入层
 + 负责接收外界事件，可以是kafka、[DDMQ](https://github.com/didi/DDMQ)等异步消息，也可以是http等同步消息
@@ -27,7 +27,7 @@
 # 2.执行流程
 以下流程描述一个事件触发FlowExecutor执行的过程:
 
-![执行流程](.././assets/images/executor1.png)
+![执行流程](../../docs/assets/images/executor1.png)
 + kafkaSource负责消费kafka中数据，并维护kafka位点进行commit
 + EventBuilder负责事件的生成
 + EventRouter负责事件分发

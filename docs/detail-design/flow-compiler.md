@@ -2,7 +2,7 @@
 
 ## 星盘编译整体流程
 
-![编译原理](.././assets/images/compile-process1.png)
+![编译原理](../../docs/assets/images/compile-process1.png)
 
 + 星盘使用[ANTLR4](https://github.com/antlr/antlr4)将flow文件编译成AST(抽象语法树), AST用Protobuf表示，[ProtoBuf定义](../../horoscope-core/src/main/proto/flow_dsl.proto)。
 

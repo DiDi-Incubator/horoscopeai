@@ -33,15 +33,14 @@
 + **实时分布式**: Flow的执行层是高并发, 高可用的实时流架构, 集群可动态伸缩, 同时支持状态缓存。
 
 # 快速开始
-[快速搭建服务](./docs/programming-guides/quick-start.md)
-
-[股票舆情分析](./docs/examples/demo.md)
++ [快速搭建服务](./docs/programming-guides/quick-start.md)
++ [股票舆情分析](./docs/examples/demo.md)
 
 # 系统架构
-![architecture](./docs/assets/images/architecture.jpg)
+![architecture](./docs/assets/images/architecture.png)
 
 星盘框架分为三层:
-+ 系统功能: 系统对外提供提供流程编排, 日志埋点, 流程实验三种功能。
++ 系统功能: 系统对外提供流程编排, 日志埋点, 流程实验三种功能。
 + 接口层: 三种功能都统一采用自研的FlowDSL表示, 系统会将流程的各项配置编译为一种图结构的中间表示。
 + 执行层: 负责Flow实时处理。支持本地和分布式两种模式, 通过泛源接入实时事件, 调用执行器运行编译后的Flow, 运行中的上下文状态缓存在Trace中。如果用Kafka作为泛源, flow是异步执行, 如果用HTTP作为泛源,
   支持同步和异步两种模式。
@@ -52,6 +51,7 @@
   这样的流程是一个环状的异步实时流, 用Flink实现会需要多个实时流Join, 管理和维护的成本较高。
 + [Netflix Conductor](https://netflix.github.io/conductor/): 由Netflix公司开发的面向微服务的流程编排引擎, 该引擎可管理复杂的微服务流程, 但流程表达的丰富程度不够, 不支持埋点和实验, 同时不支持高吞吐的实时流。
 + [Airflow](https://airflow.apache.org/): 主要提供离线数据报表的ETL流程编排功能, 有很好的可扩展性, 但不支持实时数据流场景。
+
 综上所述, 业界主流的开源系统中, 目前还没有能同时完成实时流程编排,日志埋点和实验功能的系统, 星盘的优势正在于此。然而, 星盘系统也存在局限性, 例如:
 + 大数据ETL相关的关系运算的算子丰富程度不如Flink, 我们在业务中常用Flink做初步的ETL后再接入星盘进行流程编排。
 + 实时系统容错性方面, 支持at-least once和反压, 不支持exactly-once。
@@ -115,14 +115,10 @@ Flow的核心逻辑是对来自数据源的数据进行加工处理，处理过�
 
 ### 流程编排
 星盘流程编排有Include、Subscribe、Schedule、Callback四种形式。
-+ Include
-include是将其他flow引入到当前flow中，也可以理解为当前flow触发另一个flow的执行，类比一般的函数过程调用。
-+ Subscribe
-subscribe是从一个flow中订阅流量，被订阅的flow不感知被订阅，不支持返回值。
-+ Schedule
-schedule是延时调度其他flow。
-+ Callback
-callback指调用外部服务并接收异步反馈的机制。调用外部服务后，等待外部服务的反馈来继续接下来的流程运行，当前flow的上下文会暂时保存在缓存中。
++ **Include**: 是将其他flow引入到当前flow中，也可以理解为当前flow触发另一个flow的执行，类比一般的函数过程调用。
++ **Subscribe**: 是从一个flow中订阅流量，被订阅的flow不感知被订阅，不支持返回值。
++ **Schedule**: 延时调度其他flow。
++ **Callback**: 指调用外部服务并接收异步反馈的机制。调用外部服务后，等待外部服务的反馈来继续接下来的流程运行，当前flow的上下文会暂时保存在缓存中。
 
 具体使用方式参见[详细开发文档](./docs/programming-guides/developer-guide.md)
 
@@ -132,7 +128,7 @@ callback指调用外部服务并接收异步反馈的机制。调用外部服务
 + 跨多流程：框架允许用户直接对多个流程的日志字段进行收集，节省多次离线关联操作。
 + 配置化：用户可以通过配置化方式来指定埋点字段，当前版本仅支持在本地配置，更新配置后需要重启服务。
 
-具体使用方式参见[详细开发文档](./docs/programming-guides/developer-guide.md)。
+具体使用方式参见[详细开发文档](./docs/programming-guides/developer-guide.md)
 
 ### 实验分析
 星盘提供A/B实验功能
