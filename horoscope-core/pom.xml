@@ -15,8 +15,8 @@
 
     <properties>
         <jackson.version>2.9.4</jackson.version>
-        <akka.version>2.5.19</akka.version>
-        <akka.http.version>10.1.6</akka.http.version>
+        <akka.version>2.5.32</akka.version>
+        <akka.http.version>10.1.15</akka.http.version>
     </properties>
 
     <dependencies>
@@ -91,6 +91,11 @@
             <groupId>com.typesafe.akka</groupId>
             <artifactId>akka-stream_2.11</artifactId>
             <version>${akka.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.typesafe.akka</groupId>
+            <artifactId>akka-http-core_2.11</artifactId>
+            <version>${akka.http.version}</version>
         </dependency>
         <dependency>
             <groupId>com.typesafe.akka</groupId>
