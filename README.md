@@ -1,20 +1,20 @@
 # 目录
-+ [项目简介](# 项目简介)
-+ [核心功能](# 核心功能)
-+ [快速开始](# 快速开始)
-+ [系统架构](# 系统架构)
-+ [业界系统对比](## 业界系统对比)
-+ [用户文档](# 用户文档)
-  + [开发指南](## 开发指南)
-    + [FlowDSL](### FlowDSL)
-    + [流程编制](### 流程编制)
-    + [流程编排](### 流程编排)
-    + [流程埋点](### 流程埋点)
-    + [实验分析](### 实验分析)
-  + [星盘拓展](## 星盘拓展)
-+ [相关文档](# 相关文档)
-+ [团队简介](# 团队简介)
-+ [开源计划](# 开源计划)
++ [项目简介](#项目简介)
++ [核心功能](#核心功能)
++ [快速开始](#快速开始)
++ [系统架构](#系统架构)
++ [业界系统对比](##业界系统对比)
++ [用户文档](#用户文档)
+  + [开发指南](##开发指南)
+    + [FlowDSL](###FlowDSL)
+    + [流程编制](###流程编制)
+    + [流程编排](###流程编排)
+    + [流程埋点](###流程埋点)
+    + [实验分析](###实验分析)
+  + [星盘拓展](##星盘拓展)
++ [相关文档](#相关文档)
++ [团队简介](#团队简介)
++ [开源计划](#开源计划)
 
 
 # 项目简介
@@ -167,6 +167,7 @@ Flow的核心逻辑是对来自数据源的数据进行加工处理，处理过�
 
 # 团队简介
 + **创始人:** [Flying Weng(温翔)](https://github.com/flyingwen)
++ **团队:** 滴滴地图-交通大数据-挖掘引擎
 + **贡献者:** [Chai Yi](https://github.com/cy736732813), [Cyanny Liang](https://github.com/lgrcyanny), [Frank Liu](https://github.com/Frankliu23), [Zhanghy Zhang](https://github.com/BigBigCatCat), 
   [Mavrick 
   Zhao](https://github.com/MaverickZwt), [Mahuan Ma](https://github.com/jxyzmahuan), [Sheying Wang](https://github.com/tiankonghewo), [Songling Zhang](https://github.com/code-zhangsl), [Pengfei Wang](https://github.com/polarfox17), 
